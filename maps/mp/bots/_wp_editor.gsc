@@ -461,6 +461,7 @@ LoadWaypoints()
 	self deleteAllWaypoints();
 	self iprintlnbold( "Loading WPS..." );
 	load_waypoints();
+	level.waypointcount = level.waypoints.size;
 	
 	wait 1;
 	
