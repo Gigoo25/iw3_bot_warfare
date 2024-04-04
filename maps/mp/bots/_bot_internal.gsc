@@ -556,6 +556,12 @@ onWeaponChange()
 		{
 			first = false;
 			newWeapon = self getcurrentweapon();
+
+			// hack fix for botstop overridding weapon
+			if ( newWeapon != "none" )
+			{
+				self switchtoweapon( newWeapon );
+			}
 		}
 		else
 		{
@@ -1781,6 +1787,7 @@ aim()
 	for ( ;; )
 	{
 		wait 0.05;
+		waittillframeend;
 		
 		if ( level.inprematchperiod || level.gameended || self.bot.isfrozen || self maps\mp\_flashgrenades::isflashbanged() )
 		{
