@@ -207,7 +207,10 @@ init()
 	if ( !isdefined( game[ "botWarfare" ] ) )
 	{
 		game[ "botWarfare" ] = true;
+		game[ "botWarfareInitTime" ] = gettime();
 	}
+	
+	level.bot_inittime = gettime();
 	
 	level.defuseobject = undefined;
 	level.bots_smokelist = List();
@@ -471,7 +474,7 @@ onDisconnect()
 connected()
 {
 	self endon( "disconnect" );
-
+	
 	for ( i = 0; i < level.bots.size; i++ )
 	{
 		bot = level.bots[ i ];
