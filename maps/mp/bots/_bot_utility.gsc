@@ -134,6 +134,17 @@ BotBuiltinBotMeleeParams( yaw, dist )
 }
 
 /*
+	Sets angles
+*/
+BotBuiltinBotAngles( angles )
+{
+	if ( isdefined( level.bot_builtins ) && isdefined( level.bot_builtins[ "botangles" ] ) )
+	{
+		self [[ level.bot_builtins[ "botangles" ] ]]( angles );
+	}
+}
+
+/*
 	Test if is a bot
 */
 BotBuiltinIsBot()

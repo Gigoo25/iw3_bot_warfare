@@ -7,6 +7,7 @@ init()
 	level.bot_builtins[ "botmovement" ] = ::do_botmovement;
 	level.bot_builtins[ "botmoveto" ] = ::do_botmoveto;
 	level.bot_builtins[ "botmeleeparams" ] = ::do_botmeleeparams;
+	level.bot_builtins[ "botangles" ] = ::do_botangles;
 	level.bot_builtins[ "isbot" ] = ::do_isbot;
 	level.bot_builtins[ "fs_fopen" ] = ::do_fs_fopen;
 	level.bot_builtins[ "fs_fclose" ] = ::do_fs_fclose;
@@ -47,6 +48,12 @@ do_botmoveto( where )
 do_botmeleeparams( yaw, dist )
 {
 	// cod4x removed lunging due to movement exploits
+}
+
+do_botangles( angles )
+{
+	self setplayerangles( angles );
+	// self botangles( angles[ 0 ], angles[ 1 ], angles[ 2 ] );
 }
 
 do_isbot()

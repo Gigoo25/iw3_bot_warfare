@@ -358,7 +358,7 @@ classWatch()
 				a[ a.size ] = "sniper";
 				
 				self notify( "menuresponse", game[ "menu_changeclass_" + self.pers[ "team" ] ], random( a ) );
-
+				
 				wait 0.5;
 			}
 			
@@ -2855,6 +2855,12 @@ bot_watch_think_mw2()
 bot_killstreak_think_loop()
 {
 	curWeap = self getcurrentweapon();
+	
+	if ( curWeap == "radar_mp" || curWeap == "helicopter_mp" || curWeap == "airstrike_mp" )
+	{
+		self thread changeToWeapon( self.lastdroppableweapon );
+		return;
+	}
 	
 	if ( curWeap == "none" || !isWeaponDroppable( curWeap ) )
 	{
