@@ -120,6 +120,10 @@ You can easily setup a local LAN dedicated server for you to join and play on. H
 
 
 ## Changelog
+- v2.3.0 (not released yet)
+	- Smoothed bot aim at range
+	- Fixed bots_manage_fill_spec players being counted with bots_manage_fill_mode 1 (bot only)
+
 - v2.2.0
 	- Fixed some chat related script runtime errors
 	- Waypoints only load from csv now
