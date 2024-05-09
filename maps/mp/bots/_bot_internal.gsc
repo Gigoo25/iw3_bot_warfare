@@ -251,6 +251,13 @@ watchPickupGun()
 			continue;
 		}
 		
+		// todo have bots use turrets instead of just kicking them off of it
+		if ( isdefined( self.turret ) )
+		{
+			self thread use( 0.5 );
+			continue;
+		}
+		
 		weap = self getcurrentweapon();
 		
 		if ( weap != "none" && self getammocount( weap ) )
@@ -556,7 +563,7 @@ onWeaponChange()
 		{
 			first = false;
 			newWeapon = self getcurrentweapon();
-
+			
 			// hack fix for botstop overridding weapon
 			if ( newWeapon != "none" )
 			{
@@ -908,21 +915,21 @@ updateBones()
 {
 	self endon( "disconnect" );
 	self endon( "death" );
-
+	
 	for ( ;; )
 	{
 		oldbones = self.pers[ "bots" ][ "skill" ][ "bones" ];
 		bones = strtok( oldbones, "," );
-
+		
 		while ( oldbones == self.pers[ "bots" ][ "skill" ][ "bones" ] )
 		{
 			self waittill_notify_or_timeout( "new_enemy", self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] );
-
+			
 			if ( !isdefined( self.bot.target ) )
 			{
 				continue;
 			}
-
+			
 			self.bot.target.bone = random( bones );
 		}
 	}
@@ -1039,14 +1046,14 @@ targetObjUpdateNoTrace( obj )
 checkTraceForBone( myEye, bone )
 {
 	boneLoc = self gettagorigin( bone );
-
+	
 	if ( !isdefined( boneLoc ) )
 	{
 		return false;
 	}
-
+	
 	trace = bullettrace( myEye, boneLoc, false, undefined );
-
+	
 	return ( sighttracepassed( myEye, boneLoc, false, undefined ) && ( trace[ "fraction" ] >= 1.0 || trace[ "surfacetype" ] == "glass" ) );
 }
 
@@ -1162,8 +1169,8 @@ target_loop()
 			}
 			
 			canTargetPlayer = ( ( player checkTraceForBone( myEye, "j_head" ) ||
-							player checkTraceForBone( myEye, "j_ankle_le" ) ||
-							player checkTraceForBone( myEye, "j_ankle_ri" ) )
+						player checkTraceForBone( myEye, "j_ankle_le" ) ||
+						player checkTraceForBone( myEye, "j_ankle_ri" ) )
 						
 					&& ( SmokeTrace( myEye, player.origin, level.smokeradius ) ||
 						daDist < level.bots_maxknifedistance * 4 )
