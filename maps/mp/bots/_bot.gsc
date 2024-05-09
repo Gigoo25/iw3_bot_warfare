@@ -1308,10 +1308,7 @@ turret_monitoruse_watcher()
 	{
 		self waittill ( "trigger", player );
 		
-		player sayall( "OK" );
-		
 		self monitor_player_turret( player );
-		player sayall( "DONE" );
 		
 		self.owner = undefined;
 		
