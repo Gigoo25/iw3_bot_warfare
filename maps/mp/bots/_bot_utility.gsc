@@ -39,30 +39,6 @@ BotBuiltinPrintConsole( s )
 }
 
 /*
-	Writes to the file, mode can be "append" or "write"
-*/
-BotBuiltinFileWrite( file, contents, mode )
-{
-	if ( isdefined( level.bot_builtins ) && isdefined( level.bot_builtins[ "filewrite" ] ) )
-	{
-		[[ level.bot_builtins[ "filewrite" ] ]]( file, contents, mode );
-	}
-}
-
-/*
-	Returns the whole file as a string
-*/
-BotBuiltinFileRead( file )
-{
-	if ( isdefined( level.bot_builtins ) && isdefined( level.bot_builtins[ "fileread" ] ) )
-	{
-		return [[ level.bot_builtins[ "fileread" ] ]]( file );
-	}
-	
-	return undefined;
-}
-
-/*
 	Test if a file exists
 */
 BotBuiltinFileExists( file )
