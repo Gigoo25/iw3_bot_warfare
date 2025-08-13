@@ -1,26 +1,102 @@
-bota
-botb
-botc
-botd
-bote
-botf
-botg
-both
-boti
-botj
-botk
-botl
-botm
-botn
-boto
-botp
-botq
-botr
-bots
-bott
-botu
-botv
-botw
-botx
-boty
-botz
+[BOT] xXSniperXx
+[BOT] NoScope360
+[BOT] DarkAssassin
+[BOT] Ghost_Warrior
+[BOT] DeathDealer
+[BOT] ShadowKiller
+[BOT] ProGamer2008
+[BOT] HeadshotKing
+[BOT] NinjaMaster
+[BOT] TacticalOps
+[BOT] StealthSniper
+[BOT] RushB_NoStop
+[BOT] FragMaster
+[BOT] CampKiller420
+[BOT] QuickScope
+[BOT] SilentDeath
+[BOT] Xx_Slayer_xX
+[BOT] OneShot
+[BOT] BulletStorm
+[BOT] WarMachine
+[BOT] AlphaWolf
+[BOT] DemoExpert
+[BOT] SprayNPray
+[BOT] TriggerHappy
+[BOT] ReaperMan
+[BOT] SmokeGrenade
+[BOT] FlashBang
+[BOT] ClaymorePro
+[BOT] RunNGun
+[BOT] CaptainPrice
+[BOT] Soap_MacTavish
+[BOT] GhostRiley
+[BOT] TaskForce141
+[BOT] OpFor_Elite
+[BOT] USMC_Sniper
+[BOT] SAS_Operative
+[BOT] Spetsnaz_Alpha
+[BOT] Delta_Six
+[BOT] Bravo_Team
+[BOT] Charlie_Squad
+[BOT] IronSight
+[BOT] RedDot_Pro
+[BOT] ACOG_Master
+[BOT] DropShotter
+[BOT] BunnyHopper
+[BOT] WallBanger
+[BOT] CornerCamper
+[BOT] RusherPro
+[BOT] DefuseMaster
+[BOT] BombPlanter
+[BOT] ObjectivePlayer
+[BOT] TeamPlayer01
+[BOT] LoneWolf
+[BOT] AK47_Legend
+[BOT] M4A1_Pro
+[BOT] RPG_Noob
+[BOT] P90_Rusher
+[BOT] AWP_God
+[BOT] Desert_Eagle
+[BOT] MP5_Sprayer
+[BOT] G36C_Main
+[BOT] M16_Burst
+[BOT] UAV_Hunter
+[BOT] Airstrike_Pro
+[BOT] Chopper_Gunner
+[BOT] LastStand
+[BOT] Martyrdom_User
+[BOT] StoppingPower
+[BOT] Juggernaut_Tank
+[BOT] DeepImpact
+[BOT] SteadyAim
+[BOT] DoubleTap
+[BOT] SleightOfHand
+[BOT] IronLungs
+[BOT] DeadSilence
+[BOT] ExtremeConditioning
+[BOT] Prestige_10
+[BOT] NoobTuber
+[BOT] HardScoper
+[BOT] TryHard_69
+[BOT] CasualGamer
+[BOT] WeekendWarrior
+[BOT] NightShift
+[BOT] RageQuit404
+[BOT] GetRekt
+[BOT] EZ_Clap
+[BOT] GitGud
+[BOT] L2P_Noob
+[BOT] Clutch_King
+[BOT] Ace_Player
+[BOT] TopFragger
+[BOT] BottomFeeder
+[BOT] MidFragger
+[BOT] SpawnKiller
+[BOT] Revenge_Kill
+[BOT] Tactical_Nuke
+[BOT] ServerAdmin
+[BOT] PingWarrior
+[BOT] LagCompensation
+[BOT] HighPinger
+[BOT] PacketLoss
+[BOT] Connection_Lost
