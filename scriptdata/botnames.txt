@@ -1,102 +1,102 @@
-[BOT] xXSniperXx
-[BOT] NoScope360
-[BOT] DarkAssassin
-[BOT] Ghost_Warrior
-[BOT] DeathDealer
-[BOT] ShadowKiller
-[BOT] ProGamer2008
-[BOT] HeadshotKing
-[BOT] NinjaMaster
-[BOT] TacticalOps
-[BOT] StealthSniper
-[BOT] RushB_NoStop
-[BOT] FragMaster
-[BOT] CampKiller420
-[BOT] QuickScope
-[BOT] SilentDeath
-[BOT] Xx_Slayer_xX
-[BOT] OneShot
-[BOT] BulletStorm
-[BOT] WarMachine
-[BOT] AlphaWolf
-[BOT] DemoExpert
-[BOT] SprayNPray
-[BOT] TriggerHappy
-[BOT] ReaperMan
-[BOT] SmokeGrenade
-[BOT] FlashBang
-[BOT] ClaymorePro
-[BOT] RunNGun
-[BOT] CaptainPrice
-[BOT] Soap_MacTavish
-[BOT] GhostRiley
-[BOT] TaskForce141
-[BOT] OpFor_Elite
-[BOT] USMC_Sniper
-[BOT] SAS_Operative
-[BOT] Spetsnaz_Alpha
-[BOT] Delta_Six
-[BOT] Bravo_Team
-[BOT] Charlie_Squad
-[BOT] IronSight
-[BOT] RedDot_Pro
-[BOT] ACOG_Master
-[BOT] DropShotter
-[BOT] BunnyHopper
-[BOT] WallBanger
-[BOT] CornerCamper
-[BOT] RusherPro
-[BOT] DefuseMaster
-[BOT] BombPlanter
-[BOT] ObjectivePlayer
-[BOT] TeamPlayer01
-[BOT] LoneWolf
-[BOT] AK47_Legend
-[BOT] M4A1_Pro
-[BOT] RPG_Noob
-[BOT] P90_Rusher
-[BOT] AWP_God
-[BOT] Desert_Eagle
-[BOT] MP5_Sprayer
-[BOT] G36C_Main
-[BOT] M16_Burst
-[BOT] UAV_Hunter
-[BOT] Airstrike_Pro
-[BOT] Chopper_Gunner
-[BOT] LastStand
-[BOT] Martyrdom_User
-[BOT] StoppingPower
-[BOT] Juggernaut_Tank
-[BOT] DeepImpact
-[BOT] SteadyAim
-[BOT] DoubleTap
-[BOT] SleightOfHand
-[BOT] IronLungs
-[BOT] DeadSilence
-[BOT] ExtremeConditioning
-[BOT] Prestige_10
-[BOT] NoobTuber
-[BOT] HardScoper
-[BOT] TryHard_69
-[BOT] CasualGamer
-[BOT] WeekendWarrior
-[BOT] NightShift
-[BOT] RageQuit404
-[BOT] GetRekt
-[BOT] EZ_Clap
-[BOT] GitGud
-[BOT] L2P_Noob
-[BOT] Clutch_King
-[BOT] Ace_Player
-[BOT] TopFragger
-[BOT] BottomFeeder
-[BOT] MidFragger
-[BOT] SpawnKiller
-[BOT] Revenge_Kill
-[BOT] Tactical_Nuke
-[BOT] ServerAdmin
-[BOT] PingWarrior
-[BOT] LagCompensation
-[BOT] HighPinger
-[BOT] PacketLoss
-[BOT] Connection_Lost
+xXSniperXx
+NoScope360
+DarkAssassin
+Ghost_Warrior
+DeathDealer
+ShadowKiller
+ProGamer2008
+HeadshotKing
+NinjaMaster
+TacticalOps
+StealthSniper
+RushB_NoStop
+FragMaster
+CampKiller420
+QuickScope
+SilentDeath
+Xx_Slayer_xX
+OneShot
+BulletStorm
+WarMachine
+AlphaWolf
+DemoExpert
+SprayNPray
+TriggerHappy
+ReaperMan
+SmokeGrenade
+FlashBang
+ClaymorePro
+RunNGun
+CaptainPrice
+Soap_MacTavish
+GhostRiley
+TaskForce141
+OpFor_Elite
+USMC_Sniper
+SAS_Operative
+Spetsnaz_Alpha
+Delta_Six
+Bravo_Team
+Charlie_Squad
+IronSight
+RedDot_Pro
+ACOG_Master
+DropShotter
+BunnyHopper
+WallBanger
+CornerCamper
+RusherPro
+DefuseMaster
+BombPlanter
+ObjectivePlayer
+TeamPlayer01
+LoneWolf
+AK47_Legend
+M4A1_Pro
+RPG_Noob
+P90_Rusher
+AWP_God
+Desert_Eagle
+MP5_Sprayer
+G36C_Main
+M16_Burst
+UAV_Hunter
+Airstrike_Pro
+Chopper_Gunner
+LastStand
+Martyrdom_User
+StoppingPower
+Juggernaut_Tank
+DeepImpact
+SteadyAim
+DoubleTap
+SleightOfHand
+IronLungs
+DeadSilence
+ExtremeConditioning
+Prestige_10
+NoobTuber
+HardScoper
+TryHard_69
+CasualGamer
+WeekendWarrior
+NightShift
+RageQuit404
+GetRekt
+EZ_Clap
+GitGud
+L2P_Noob
+Clutch_King
+Ace_Player
+TopFragger
+BottomFeeder
+MidFragger
+SpawnKiller
+Revenge_Kill
+Tactical_Nuke
+ServerAdmin
+PingWarrior
+LagCompensation
+HighPinger
+PacketLoss
+Connection_Lost
