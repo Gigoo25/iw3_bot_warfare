@@ -2514,6 +2514,24 @@ bot_listen_to_steps_loop()
 		loc = biased;
 	}
 	
+	// if direct LOS to perceived location is blocked, bias to a nearby open angle
+	if ( !bullettracepassed( self getEyePos(), loc + ( 0, 0, 40 ), false, self ) )
+	{
+		ang2 = vectortoangles( loc - self.origin );
+		left2 = self.origin + anglestoforward( ( 0, ang2[ 1 ] + 45, 0 ) ) * 128;
+		right2 = self.origin + anglestoforward( ( 0, ang2[ 1 ] - 45, 0 ) ) * 128;
+		lt2 = bullettrace( self.origin + ( 0, 0, 32 ), left2 + ( 0, 0, 32 ), false, self );
+		rt2 = bullettrace( self.origin + ( 0, 0, 32 ), right2 + ( 0, 0, 32 ), false, self );
+		if ( lt2[ "fraction" ] > rt2[ "fraction" ] )
+		{
+			loc = left2;
+		}
+		else
+		{
+			loc = right2;
+		}
+	}
+	
 	self SetScriptGoal( loc, 64 );
 	
 	if ( self waittill_any_return( "goal", "bad_path", "new_goal" ) != "new_goal" )

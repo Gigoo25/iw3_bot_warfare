@@ -1850,7 +1850,7 @@ aim_loop()
 				}
 			}
 			
-			if ( no_trace_time && ( !isdefined( self.bot.after_target ) || self.bot.after_target != target ) )
+            if ( no_trace_time && ( !isdefined( self.bot.after_target ) || self.bot.after_target != target ) )
 			{
 				if ( no_trace_time > no_trace_ads_time )
 				{
@@ -1887,9 +1887,13 @@ aim_loop()
 						}
 					}
 				}
-				
                 // don't stand still while watching last known position
                 self thread micro_jiggle_movement();
+                // if LOS to last known is blocked for a bit, try to step for a better angle
+                if ( no_trace_time > 600 )
+                {
+                    self thread seek_better_angle( last_pos );
+                }
 				self thread bot_lookat( last_pos + ( 0, 0, self getEyeHeight() + nadeAimOffset ), aimspeed );
 				return;
 			}
@@ -2566,6 +2570,33 @@ anti_idle()
 			idleMs = 0;
 		}
 	}
+}
+
+// Try a small lateral step to get sight to a blocked last-known position
+seek_better_angle( lookPos )
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	myEye = self getEyePos();
+	if ( bullettracepassed( myEye, lookPos, false, self ) )
+	{
+		return;
+	}
+	
+	baseAngles = vectortoangles( lookPos - myEye );
+	left = ( 0, baseAngles[ 1 ] + 30, 0 );
+	right = ( 0, baseAngles[ 1 ] - 30, 0 );
+	probe = left;
+	if ( randomint( 100 ) < 50 )
+	{
+		probe = right;
+	}
+	step = 64;
+	from = self.origin + ( 0, 0, 16 );
+	to = playerphysicstrace( from, from + anglestoforward( probe ) * step, false, self );
+	to = physicstrace( to + ( 0, 0, 50 ), to + ( 0, 0, -40 ), false, self );
+	self botSetMoveTo( to );
 }
 
 // Quick shoulder check at corners before committing
