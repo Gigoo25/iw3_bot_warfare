@@ -62,6 +62,14 @@ connected()
 	self.bot_radar = false;
 	self resetBotVars();
 	
+	// initialize emotion state and listeners
+	if ( !isdefined( self.bot.emotion_anger ) )
+	{
+		self.bot.emotion_anger = 0;
+	}
+	self thread emotion_decay();
+	self thread listenKilledEnemy();
+	
 	self thread onPlayerSpawned();
 	self thread bot_skip_killcam();
 	self thread onUAVUpdate();
@@ -101,6 +109,14 @@ doUAVUpdate()
 */
 onKilled( eInflictor, eAttacker, iDamage, sMeansOfDeath, sWeapon, vDir, sHitLoc, timeOffset, deathAnimDuration )
 {
+    // getting killed increases anger (carryover to next life)
+    if ( isdefined( eAttacker ) && isplayer( eAttacker ) )
+    {
+        if ( !level.teambased || eAttacker.team != self.team )
+        {
+            self addAnger( 0.5 );
+        }
+    }
 }
 
 /*
@@ -108,6 +124,19 @@ onKilled( eInflictor, eAttacker, iDamage, sMeansOfDeath, sWeapon, vDir, sHitLoc,
 */
 onDamage( eInflictor, eAttacker, iDamage, iDFlags, sMeansOfDeath, sWeapon, vPoint, vDir, sHitLoc, timeOffset )
 {
+    // taking damage raises anger slightly
+    if ( isdefined( eAttacker ) && isplayer( eAttacker ) )
+    {
+        if ( !level.teambased || eAttacker.team != self.team )
+        {
+            add = min( 0.35, iDamage / 200.0 );
+            if ( sHitLoc == "head" )
+            {
+                add += 0.1;
+            }
+            self addAnger( add );
+        }
+    }
 }
 
 /*
@@ -165,6 +194,120 @@ resetBotVars()
 	self.bot.rand = randomint( 100 );
 	
 	self BotBuiltinBotStop();
+}
+
+// --------------------
+// Emotion and human-like modifiers
+// --------------------
+
+getAnger()
+{
+	if ( !isdefined( self.bot.emotion_anger ) )
+	{
+		return 0;
+	}
+	return max( 0, min( 1, self.bot.emotion_anger ) );
+}
+
+addAnger( amount )
+{
+	if ( !isdefined( self.bot.emotion_anger ) )
+	{
+		self.bot.emotion_anger = 0;
+	}
+	self.bot.emotion_anger += amount;
+	self.bot.emotion_anger = max( 0, min( 1, self.bot.emotion_anger ) );
+}
+
+emotion_decay()
+{
+	self endon( "disconnect" );
+	for ( ;; )
+	{
+		wait 0.5;
+		self addAnger( -0.02 );
+	}
+}
+
+listenKilledEnemy()
+{
+	self endon( "disconnect" );
+	for ( ;; )
+	{
+		self waittill( "killed_enemy" );
+		// calm down a bit after a kill
+		self addAnger( -0.25 );
+	}
+}
+
+getHumanAimJitter( obj, adsAmount )
+{
+	// Compute additional human-like jitter based on distance, movement, stance, ADS, and emotion
+	if ( !isdefined( obj ) )
+	{
+		return ( 0, 0, 0 );
+	}
+	
+	// distance factors
+	distClose = self.pers[ "bots" ][ "skill" ][ "dist_start" ] * self.bot.cur_weap_dist_multi;
+	distMax = self.pers[ "bots" ][ "skill" ][ "dist_max" ] * self.bot.cur_weap_dist_multi;
+	linDist = sqrt( max( 0, obj.dist ) );
+	farFrac = 0;
+	if ( distMax > distClose )
+	{
+		farFrac = max( 0, min( 1, ( linDist - distClose ) / ( distMax - distClose ) ) );
+	}
+	
+	// base from difficulty, always have a little jitter even for perfect aim
+	base = self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ];
+	base = max( 0.1, base );
+	
+	// stance and movement
+	stance = self getstance();
+	mulStance = 1;
+	if ( stance == "crouch" )
+	{
+		mulStance = 0.7;
+	}
+	else if ( stance == "prone" )
+	{
+		mulStance = 0.5;
+	}
+	
+	mulADS = 1 - ( adsAmount * 0.6 );
+	
+	velLenSq = lengthsquared( self getvelocity() );
+	mulMove = 1;
+	if ( velLenSq > 4000 )
+	{
+		mulMove = 1.25;
+	}
+	if ( self.bot.issprinting )
+	{
+		mulMove = 1.5;
+	}
+	
+	anger = self getAnger();
+	mulAnger = 1 + ( 0.8 * anger );
+	
+	amplitude = base * ( 0.25 + 0.75 * farFrac ) * mulStance * mulADS * mulMove * mulAnger;
+	
+	// smooth jitter using time-based oscillation with per-target phase
+	if ( !isdefined( obj.jitter_phase ) )
+	{
+		obj.jitter_phase = ( randomfloatrange( 0, 360 ), randomfloatrange( 0, 360 ), randomfloatrange( 0, 360 ) );
+	}
+	
+	t = gettime() * 0.005; // slow varying
+	px = obj.jitter_phase[ 0 ];
+	py = obj.jitter_phase[ 1 ];
+	pz = obj.jitter_phase[ 2 ];
+	// use degrees-based trig consistent with other code
+	jx = sin( t + px ) * amplitude;
+	jy = cos( t * 0.9 + py ) * amplitude;
+	jz = sin( t * 1.1 + pz ) * amplitude * 0.6; // less vertical sway
+	
+	return ( jx, jy, jz );
 }
 
 /*
@@ -687,7 +830,7 @@ stance_loop()
 		toStance = "crouch";
 	}
 	
-	if ( toStance == "stand" )
+    if ( toStance == "stand" )
 	{
 		self stand();
 	}
@@ -702,7 +845,9 @@ stance_loop()
 	
 	curweap = self getcurrentweapon();
 	time = gettime();
-	chance = self.pers[ "bots" ][ "behavior" ][ "sprint" ];
+    chance = self.pers[ "bots" ][ "behavior" ][ "sprint" ];
+    // impatience: increase sprinting chance when angry
+    chance = int( chance * ( 1 + 0.5 * self getAnger() ) );
 	
 	if ( time - self.lastspawntime < 5000 )
 	{
@@ -1405,7 +1550,10 @@ watchToLook()
 			continue;
 		}
 		
-		if ( self.bot.target.rand <= self.pers[ "bots" ][ "behavior" ][ "strafe" ] )
+        // impatience/anger: more strafing when angry
+        strafeChance = self.pers[ "bots" ][ "behavior" ][ "strafe" ];
+        strafeChance = int( strafeChance * ( 1 + 0.4 * self getAnger() ) );
+        if ( self.bot.target.rand <= strafeChance )
 		{
 			if ( self getstance() != "stand" )
 			{
@@ -1597,8 +1745,10 @@ aim_loop()
 						return;
 					}
 					
-					aimpos += offset;
-					aimpos += aimoffset;
+                    aimpos += offset;
+                    aimpos += aimoffset;
+                    // add human-like jitter
+                    aimpos += self getHumanAimJitter( self.bot.target, adsAmount );
 					aimpos += ( 0, 0, nadeAimOffset );
 					
 					conedot = getConeDot( aimpos, eyePos, angles );
@@ -1618,9 +1768,10 @@ aim_loop()
 				}
 				else
 				{
-					aimpos = target.origin;
-					aimpos += offset;
-					aimpos += aimoffset;
+                    aimpos = target.origin;
+                    aimpos += offset;
+                    aimpos += aimoffset;
+                    aimpos += self getHumanAimJitter( self.bot.target, adsAmount );
 					aimpos += ( 0, 0, nadeAimOffset );
 					
 					conedot = getConeDot( aimpos, eyePos, angles );
@@ -1671,9 +1822,25 @@ aim_loop()
 					}
 				}
 				
-				if ( trace_time > reaction_time )
+                if ( trace_time > reaction_time )
 				{
-					if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > 0.99 || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
+                    // dynamic fire threshold based on distance and emotion
+                    distClose_fire = self.pers[ "bots" ][ "skill" ][ "dist_start" ] * self.bot.cur_weap_dist_multi;
+                    distMax_fire = self.pers[ "bots" ][ "skill" ][ "dist_max" ] * self.bot.cur_weap_dist_multi;
+                    linDist_fire = sqrt( max( 0, dist ) );
+                    farFrac_fire = 0;
+                    if ( distMax_fire > distClose_fire )
+                    {
+                        farFrac_fire = max( 0, min( 1, ( linDist_fire - distClose_fire ) / ( distMax_fire - distClose_fire ) ) );
+                    }
+                    anger_fire = self getAnger();
+                    fireThr = 0.985 + 0.02 * farFrac_fire - 0.03 * anger_fire;
+                    if ( fireThr < 0.94 ) fireThr = 0.94;
+                    if ( fireThr > 0.995 ) fireThr = 0.995;
+
+                    earlyShoot = ( anger_fire > randomfloatrange( 0, 1 ) );
+
+                    if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > fireThr || ( earlyShoot && conedot > fireThr - 0.02 ) || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
 					{
 						self botFire();
 					}
@@ -1714,7 +1881,7 @@ aim_loop()
 		aimpos = last_pos + ( 0, 0, self getEyeHeight() + nadeAimOffset );
 		conedot = getConeDot( aimpos, eyePos, angles );
 		
-		self thread bot_lookat( aimpos, aimspeed );
+        self thread bot_lookat( aimpos, aimspeed );
 		
 		if ( !self canFire( curweap ) || !self isInRange( dist, curweap ) )
 		{
@@ -1745,7 +1912,21 @@ aim_loop()
 			}
 		}
 		
-		if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > 0.95 || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
+        // dynamic fire threshold for after-target shooting
+        distClose_fire2 = self.pers[ "bots" ][ "skill" ][ "dist_start" ] * self.bot.cur_weap_dist_multi;
+        distMax_fire2 = self.pers[ "bots" ][ "skill" ][ "dist_max" ] * self.bot.cur_weap_dist_multi;
+        linDist_fire2 = sqrt( max( 0, dist ) );
+        farFrac_fire2 = 0;
+        if ( distMax_fire2 > distClose_fire2 )
+        {
+            farFrac_fire2 = max( 0, min( 1, ( linDist_fire2 - distClose_fire2 ) / ( distMax_fire2 - distClose_fire2 ) ) );
+        }
+        anger_fire2 = self getAnger();
+        fireThr2 = 0.97 + 0.02 * farFrac_fire2 - 0.03 * anger_fire2;
+        if ( fireThr2 < 0.92 ) fireThr2 = 0.92;
+        if ( fireThr2 > 0.99 ) fireThr2 = 0.99;
+
+        if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > fireThr2 || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
 		{
 			self botFire();
 		}
@@ -1812,10 +1993,38 @@ botFire()
 {
 	self.bot.last_fire_time = gettime();
 	
-	if ( self.bot.is_cur_full_auto )
+    if ( self.bot.is_cur_full_auto )
 	{
-		self thread pressFire();
-		return;
+        // human-like: prefer bursts when far, longer spray when angry or close
+        dist = 0;
+        if ( isdefined( self.bot.target ) )
+        {
+            dist = self.bot.target.dist;
+        }
+        linDist = sqrt( max( 0, dist ) );
+        anger_fire = self getAnger();
+        burstLen = 0.06; // minimum tap
+        // base burst length scales with distance (shorter far away)
+        if ( linDist > 1500 )
+        {
+            burstLen = 0.08;
+        }
+        if ( linDist > 3000 )
+        {
+            burstLen = 0.1;
+        }
+        if ( linDist > 6000 )
+        {
+            burstLen = 0.12;
+        }
+        // anger increases spray time
+        burstLen *= ( 1 + 1.5 * anger_fire );
+        // randomize a bit
+        burstLen += randomfloatrange( -0.02, 0.04 );
+        if ( burstLen < 0.05 ) burstLen = 0.05;
+        if ( burstLen > 0.25 ) burstLen = 0.25;
+        self thread pressFire( burstLen );
+        return;
 	}
 	
 	if ( self.bot.semi_time )
@@ -1965,7 +2174,10 @@ walk_loop()
 				return;
 			}
 			
-			if ( self.bot.target.rand <= self.pers[ "bots" ][ "behavior" ][ "strafe" ] )
+            // impatience/anger: more strafing when angry
+            strafeChance2 = self.pers[ "bots" ][ "behavior" ][ "strafe" ];
+            strafeChance2 = int( strafeChance2 * ( 1 + 0.4 * self getAnger() ) );
+            if ( self.bot.target.rand <= strafeChance2 )
 			{
 				self strafe( self.bot.target.entity );
 			}
