@@ -262,6 +262,9 @@ listenKilledEnemy()
 		self waittill( "killed_enemy" );
 		// calm down a bit after a kill
 		self addAnger( -0.25 );
+		
+		// Trigger immediate movement to next objective
+		self thread bot_post_kill_movement();
 	}
 }
 
@@ -1756,9 +1759,112 @@ start_bot_after_target( who )
 	self notify( "kill_after_target" );
 	self endon( "kill_after_target" );
 	
-	wait self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ];
+	// Reduced post-kill delay for more dynamic movement
+	wait self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] * 0.3;
 	
+	// Immediately start moving to next objective after kill
+	self thread bot_post_kill_movement();
+	
+	// Clear the after target
 	self.bot.after_target = undefined;
+}
+
+/*
+	Makes the bot move to the next objective immediately after a kill
+*/
+bot_post_kill_movement()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	// Small delay to prevent immediate movement (feels more natural)
+	wait 0.1;
+	
+	// If bot has no current target, find a new objective
+	if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
+	{
+		// Trigger target acquisition with aggression boost
+		self thread bot_post_kill_target_aggression();
+		self notify( "need_new_target" );
+		
+		// If still no target after a moment, move to a random waypoint
+		wait 0.5;
+		if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
+		{
+			self thread bot_move_to_random_objective();
+		}
+	}
+	else
+	{
+		// Even if we have a target, start moving to improve positioning
+		self thread bot_post_kill_target_aggression();
+	}
+}
+
+/*
+	Moves the bot to a random objective/waypoint when no target is available
+*/
+bot_move_to_random_objective()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	// Get all available waypoints
+	waypoints = getWaypointsOfType( "node" );
+	if ( isdefined( waypoints ) && waypoints.size > 0 )
+	{
+		// Pick a random waypoint that's not too close to current position
+		attempts = 0;
+		max_attempts = 10;
+		
+		while ( attempts < max_attempts )
+		{
+			random_index = randomint( waypoints.size );
+			random_wp = getWaypointForIndex( waypoints[ random_index ] );
+			
+			if ( isdefined( random_wp ) )
+			{
+				dist = distance( self.origin, random_wp.origin );
+				// Choose waypoint that's at least 200 units away
+				if ( dist > 200 )
+				{
+					// Set as movement goal
+					self SetScriptGoal( random_wp.origin, 32 );
+					
+					// Wait for goal completion or timeout
+					wait 3;
+					self ClearScriptGoal();
+					break;
+				}
+			}
+			attempts++;
+			wait 0.1;
+		}
+	}
+}
+
+/*
+	Makes bots more aggressive about finding new targets after kills
+*/
+bot_post_kill_target_aggression()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	// Temporarily increase FOV and reduce reaction time to find targets faster
+	original_fov = self.pers[ "bots" ][ "skill" ][ "fov" ];
+	original_reaction = self.pers[ "bots" ][ "skill" ][ "reaction_time" ];
+	
+	// Boost target acquisition for a short time
+	self.pers[ "bots" ][ "skill" ][ "fov" ] *= 1.3;
+	self.pers[ "bots" ][ "skill" ][ "reaction_time" ] *= 0.7;
+	
+	// Wait for the boost period
+	wait 2.0;
+	
+	// Restore original values
+	self.pers[ "bots" ][ "skill" ][ "fov" ] = original_fov;
+	self.pers[ "bots" ][ "skill" ][ "reaction_time" ] = original_reaction;
 }
 
 /*

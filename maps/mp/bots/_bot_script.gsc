@@ -428,7 +428,7 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "spawn_time" ] = 0.75;
 					self.pers[ "bots" ][ "skill" ][ "help_dist" ] = 0;
 					self.pers[ "bots" ][ "skill" ][ "semi_time" ] = 0.9;
-					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 1;
+					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.25;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 1.5;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 4;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 2;
@@ -460,7 +460,7 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "spawn_time" ] = 0.65;
 					self.pers[ "bots" ][ "skill" ][ "help_dist" ] = 500;
 					self.pers[ "bots" ][ "skill" ][ "semi_time" ] = 0.75;
-					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.75;
+					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.4;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 1;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 3;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 1.5;
@@ -492,7 +492,7 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "spawn_time" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "help_dist" ] = 750;
 					self.pers[ "bots" ][ "skill" ][ "semi_time" ] = 0.65;
-					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.65;
+					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.3;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 0.75;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 2.5;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 1;
