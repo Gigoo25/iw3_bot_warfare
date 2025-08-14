@@ -19,6 +19,11 @@ init()
 	{
 		setdvar( "bots_main_chat", 1.0 );
 	}
+    // toggle for action-callout style chat (placing claymore, following, etc.)
+    if ( getdvar( "bots_chat_actions" ) == "" )
+    {
+        setdvar( "bots_chat_actions", 0 );
+    }
 	
 	level thread onBotConnected();
 }
@@ -177,41 +182,41 @@ start_chat_watch()
 				self thread bot_chat_stuck_watch( a, b, c, d, e, f, g );
 				break;
 				
-			case "tube":
-				self thread bot_chat_tube_watch( a, b, c, d, e, f, g );
-				break;
+            case "tube":
+                if ( getdvarint( "bots_chat_actions" ) ) { self thread bot_chat_tube_watch( a, b, c, d, e, f, g ); }
+                break;
 				
 			case "killstreak":
 				self thread bot_chat_killstreak_watch( a, b, c, d, e, f, g );
 				break;
 				
-			case "attack_vehicle":
-				self thread bot_chat_attack_vehicle_watch( a, b, c, d, e, f, g );
-				break;
+            case "attack_vehicle":
+                if ( getdvarint( "bots_chat_actions" ) ) { self thread bot_chat_attack_vehicle_watch( a, b, c, d, e, f, g ); }
+                break;
 				
-			case "follow_threat":
-				self thread bot_chat_follow_threat_watch( a, b, c, d, e, f, g );
-				break;
+            case "follow_threat":
+                if ( getdvarint( "bots_chat_actions" ) ) { self thread bot_chat_follow_threat_watch( a, b, c, d, e, f, g ); }
+                break;
 				
-			case "camp":
-				self thread bot_chat_camp_watch( a, b, c, d, e, f, g );
-				break;
+            case "camp":
+                if ( getdvarint( "bots_chat_actions" ) ) { self thread bot_chat_camp_watch( a, b, c, d, e, f, g ); }
+                break;
 				
-			case "follow":
-				self thread bot_chat_follow_watch( a, b, c, d, e, f, g );
-				break;
+            case "follow":
+                if ( getdvarint( "bots_chat_actions" ) ) { self thread bot_chat_follow_watch( a, b, c, d, e, f, g ); }
+                break;
 				
-			case "equ":
-				self thread bot_chat_equ_watch( a, b, c, d, e, f, g );
-				break;
+            case "equ":
+                if ( getdvarint( "bots_chat_actions" ) ) { self thread bot_chat_equ_watch( a, b, c, d, e, f, g ); }
+                break;
 				
-			case "nade":
-				self thread bot_chat_nade_watch( a, b, c, d, e, f, g );
-				break;
+            case "nade":
+                if ( getdvarint( "bots_chat_actions" ) ) { self thread bot_chat_nade_watch( a, b, c, d, e, f, g ); }
+                break;
 				
-			case "throwback":
-				self thread bot_chat_throwback_watch( a, b, c, d, e, f, g );
-				break;
+            case "throwback":
+                if ( getdvarint( "bots_chat_actions" ) ) { self thread bot_chat_throwback_watch( a, b, c, d, e, f, g ); }
+                break;
 				
 			case "rage":
 				self thread bot_chat_rage_watch( a, b, c, d, e, f, g );
@@ -952,63 +957,36 @@ bot_chat_killed_watch( victim )
 	
 	message = "";
 	
-	switch ( randomint( 42 ) )
+    switch ( randomint( 28 ) )
 	{
-		case 0:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Haha take that " + victim.name );
-			break;
-			
-		case 1:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Who's your daddy!" );
-			break;
-			
-		case 2:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "O i just kicked your ass " + victim.name + "!!" );
-			break;
-			
-		case 3:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Better luck next time " + victim.name );
-			break;
-			
-		case 4:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + victim.name + " Is that all you got?" );
-			break;
-			
-		case 5:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "LOL " + victim.name + ", l2play" );
-			break;
-			
-		case 6:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + ":)" );
-			break;
-			
-		case 7:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Im unstoppable!" );
-			break;
-			
-		case 8:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Wow " + victim.name + " that was a close one!" );
-			break;
-			
-		case 9:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Haha thank you, thank you very much." );
-			break;
-			
-		case 10:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "HAHAHAHA LOL" );
-			break;
-			
-		case 11:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "ROFL you suck " + victim.name + "!!" );
-			break;
-			
-		case 12:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Wow that was a lucky shot!" );
-			break;
-			
-		case 13:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Thats right, i totally pwnd your ass!" );
-			break;
+        case 0: message = ( "ez " + victim.name ); break;
+        case 1: message = ( "sit down" ); break;
+        case 2: message = ( "ur trash kid" ); break;
+        case 3: message = ( "get turned on " + victim.name ); break;
+        case 4: message = ( "outgunned" ); break;
+        case 5: message = ( "nice try tho" ); break;
+        case 6: message = ( "get rekt" ); break;
+        case 7: message = ( "holy hitreg lol" ); break;
+        case 8: message = ( "lag saved u ngl" ); break;
+        case 9: message = ( "im cracked rn" ); break;
+        case 10: message = ( "beamed" ); break;
+        case 11: message = ( "dont peek me" ); break;
+        case 12: message = ( "^" + ( randomint( 6 ) + 1 ) + "ez clap" ); break;
+        case 13: message = ( "^" + ( randomint( 6 ) + 1 ) + "get good " + victim.name ); break;
+        case 14: message = ( "bro got melted" ); break;
+        case 15: message = ( "dont cry " + victim.name ); break;
+        case 16: message = ( "aimbot? jk" ); break;
+        case 17: message = ( "^" + ( randomint( 6 ) + 1 ) + "ok buddy" ); break;
+        case 18: message = ( "sheeeesh" ); break;
+        case 19: message = ( "that mp5 hittin" ); break;
+        case 20: message = ( "^" + ( randomint( 6 ) + 1 ) + ":)" ); break;
+        case 21: message = ( "^" + ( randomint( 6 ) + 1 ) + "ggs" ); break;
+        case 22: message = ( "^" + ( randomint( 6 ) + 1 ) + "lol" ); break;
+        case 23: message = ( "^" + ( randomint( 6 ) + 1 ) + "nice shots" ); break;
+        case 24: message = ( "ez 2v1" ); break;
+        case 25: message = ( "ur welcome team" ); break;
+        case 26: message = ( "free kill ty" ); break;
+        case 27: message = ( "np bro" ); break;
 			
 		case 14:
 			message = ( "^" + ( randomint( 6 ) + 1 ) + "Don't even think that i am hacking cause that was pure skill!" );
@@ -1142,159 +1120,78 @@ bot_chat_death_watch( killer, last_ks )
 	
 	message = "";
 	
-	switch ( randomint( 68 ) )
+    switch ( randomint( 36 ) )
 	{
-		case 0:
-			message = "^" + ( randomint( 6 ) + 1 ) + "Damm, i just got pwnd by " + killer.name;
-			break;
+        case 0: message = ( "nah that timing" ); break;
+        case 1: message = ( "ok buddy" ); break;
+        case 2: message = ( "nice shot ngl" ); break;
+        case 3: message = ( "lag spikes wtf" ); break;
 			
-		case 1:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Hax ! Hax ! Hax !" );
-			break;
+        case 4:
+            if ( last_ks > 0 ) { message = ( "rip streak " + last_ks ); } else { message = ( "spawn killed again..." ); }
+            break;
 			
-		case 2:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "WOW n1 " + killer.name );
-			break;
+        case 5: message = ( "stop spawn killin" ); break;
 			
-		case 3:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "How the?? How did you do that " + killer.name + "?" );
-			break;
+        case 6: message = ( "nice one " + killer.name ); break;
 			
-		case 4:
-			if ( last_ks > 0 )
-			{
-				message = ( "^" + ( randomint( 6 ) + 1 ) + "Nooooooooo my killstreaks!! :( I had a " + last_ks + " killstreak!!" );
-			}
-			else
-			{
-				message = ( "man im getting spawn killed, i have a " + self.cur_death_streak + " deathstreak!" );
-			}
+        case 7: message = ( "bro ur corning idc" ); break;
 			
-			break;
+        case 8: message = ( "n1 " + killer.name ); break;
 			
-		case 5:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Stop spawn KILLING!!!" );
-			break;
+        case 9: message = ( "my ping is chalked" ); break;
 			
-		case 6:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Haha Well done " + killer.name );
-			break;
+        case 10: message = ( "ok i got farmed" ); break;
 			
-		case 7:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Agggghhhh " + killer.name + " you are such a noob!!!!" );
-			break;
+        case 11: message = ( "today aint it" ); break;
 			
-		case 8:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "n1 " + killer.name );
-			break;
+        case 12: message = ( "aaaaa" ); break;
 			
-		case 9:
-			message = ( "Sigh at my lag, it's totally killing me.. ^2Just Look at my ^1Ping!" );
-			break;
+        case 13: message = ( "hacker lol" ); break;
 			
-		case 10:
-			message = ( "omg wow that was LEGENDARY, well done " + killer.name );
-			break;
+        case 14: message = ( "wh" ); break;
 			
-		case 11:
-			message = ( "Today is defnitly not my day" );
-			break;
+        case 15: message = ( "this game man" ); break;
 			
-		case 12:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "Aaaaaaaagh!!!" );
-			break;
+        case 16: message = ( ":o" ); break;
 			
-		case 13:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + " Dude What the hell, " + killer.name + " is such a HACKER!! " );
-			break;
+        case 17: message = ( "noooo" ); break;
 			
-		case 14:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + killer.name + " you Wallhacker!" );
-			break;
+        case 18: message = ( "how u hit that" ); break;
 			
-		case 15:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "This is so frustrating!" );
-			break;
+        case 19: message = ( "lagggg" ); break;
 			
-		case 16:
-			message = ( " :O I can't believe that just happened" );
-			break;
+        case 20: message = ( "i hate this map" ); break;
 			
-		case 17:
-			message = ( killer.name + " you ^1Noooo^2ooooooooo^3ooooo^5b" );
-			break;
+        case 21: message = ( killer.name + " u a tank fr" ); break;
 			
-		case 18:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "LOL, " + killer.name + " how did you kill me?" );
-			break;
+        case 22: message = ( "my isp is done" ); break;
 			
-		case 19:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "laaaaaaaaaaaaaaaaaaaag" );
-			break;
+        case 23: message = ( "brb" ); break;
 			
-		case 20:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "i hate this map!" );
-			break;
+        case 24: message = ( "random af" ); break;
 			
-		case 21:
-			message = ( killer.name + " You tanker!!" );
-			break;
+        case 25: message = ( "close one" ); break;
 			
-		case 22:
-			message = ( "Sigh at my isp" );
-			break;
+        case 26: message = ( "rofl" ); break;
 			
-		case 23:
-			message = ( "^1I'll ^2be ^6back" );
-			break;
+        case 27: message = ( "WTF" ); break;
 			
-		case 24:
-			message = ( "LoL that was random" );
-			break;
+        case 28: message = ( "team diff lol" ); break;
 			
-		case 25:
-			message = ( "ooohh that was so close " + killer.name + " and you know it !! " );
-			break;
+        case 29: message = ( "stfu kid" ); break;
 			
-		case 26:
-			message = ( "^" + ( randomint( 6 ) + 1 ) + "rofl" );
-			break;
+        case 30: message = ( "blocked by teammate nice" ); break;
 			
-		case 27:
-			message = ( "AAAAHHHHH! WTF! IM GOING TO KILL YOU " + killer.name );
-			break;
+        case 31: message = ( "move team ffs" ); break;
 			
-		case 28:
-			message = ( "AHH! IM DEAD BECAUSE " + level.players[ randomint( level.players.size ) ].name + " is a noob!" );
-			break;
+        case 32: message = ( "tryhard" ); break;
 			
-		case 29:
-			message = ( level.players[ randomint( level.players.size ) ].name + ", please don't talk." );
-			break;
+        case 33: message = ( "cope" ); break;
 			
-		case 30:
-			message = ( "Wow " + level.players[ randomint( level.players.size ) ].name + " is a blocker noob!" );
-			break;
+        case 34: message = ( "relax bro" ); break;
 			
-		case 31:
-			message = ( "Next time GET OUT OF MY WAY " + level.players[ randomint( level.players.size ) ].name + "!!" );
-			break;
-			
-		case 32:
-			message = ( "Wow, I'm dead because " + killer.name + " is a tryhard..." );
-			break;
-			
-		case 33:
-			message = ( "Try harder " + killer.name + " please!" );
-			break;
-			
-		case 34:
-			message = ( "I bet " + killer.name + "'s fingers are about to break." );
-			break;
-			
-		case 35:
-			message = ( "WOW, USE A REAL GUN " + killer.name + "!" );
-			break;
+        case 35: message = ( "use a real gun" ); break;
 			
 		case 36:
 			message = ( "k wtf. " + killer.name + " is hacking" );
