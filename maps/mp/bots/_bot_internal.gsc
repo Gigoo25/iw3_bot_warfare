@@ -888,7 +888,7 @@ stance_loop()
 		chance *= 2;
 	}
 	
-	if ( toStance != "stand" || self.bot.isreloading || self.bot.issprinting || self.bot.isfraggingafter || self.bot.issmokingafter )
+    if ( toStance != "stand" || self.bot.isreloading || self.bot.issprinting || self.bot.isfraggingafter || self.bot.issmokingafter )
 	{
 		return;
 	}
@@ -908,7 +908,8 @@ stance_loop()
 		return;
 	}
 	
-	if ( !isdefined( self.bot.towards_goal ) || distancesquared( self.origin, physicstrace( self getEyePos(), self getEyePos() + anglestoforward( self getplayerangles() ) * 1024, false, undefined ) ) < level.bots_minsprintdistance || getConeDot( self.bot.towards_goal, self.origin, self getplayerangles() ) < 0.75 )
+    // allow more sprinting, relax cone dot threshold a bit for human impatience
+    if ( !isdefined( self.bot.towards_goal ) || distancesquared( self.origin, physicstrace( self getEyePos(), self getEyePos() + anglestoforward( self getplayerangles() ) * 1024, false, undefined ) ) < level.bots_minsprintdistance || getConeDot( self.bot.towards_goal, self.origin, self getplayerangles() ) < 0.6 )
 	{
 		return;
 	}
@@ -1803,6 +1804,8 @@ aim_loop()
 					}
 				}
 				
+                // don't stand still while watching last known position
+                self thread micro_jiggle_movement();
 				self thread bot_lookat( last_pos + ( 0, 0, self getEyeHeight() + nadeAimOffset ), aimspeed );
 				return;
 			}
@@ -1921,6 +1924,11 @@ aim_loop()
 				
                 if ( trace_time > reaction_time )
 				{
+                    // add small jiggle during active gunfight to avoid being static
+                    if ( randomint( 100 ) < 65 )
+                    {
+                        self thread micro_jiggle_movement();
+                    }
                     // dynamic fire threshold based on distance and emotion
                     distClose_fire = self.pers[ "bots" ][ "skill" ][ "dist_start" ] * self.bot.cur_weap_dist_multi;
                     distMax_fire = self.pers[ "bots" ][ "skill" ][ "dist_max" ] * self.bot.cur_weap_dist_multi;
@@ -1978,6 +1986,8 @@ aim_loop()
 		aimpos = last_pos + ( 0, 0, self getEyeHeight() + nadeAimOffset );
 		conedot = getConeDot( aimpos, eyePos, angles );
 		
+        // avoid standing still while keeping after-target
+        self thread micro_jiggle_movement();
         self thread bot_lookat( aimpos, aimspeed );
 		
 		if ( !self canFire( curweap ) || !self isInRange( dist, curweap ) )
@@ -2437,6 +2447,15 @@ walk()
 			continue;
 		}
 		
+        // if we have no target and we are in the open, keep shuffling to avoid idle standing
+        if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
+        {
+            if ( randomint( 100 ) < 25 )
+            {
+                self thread micro_jiggle_movement();
+            }
+        }
+
 		if ( self maps\mp\_flashgrenades::isflashbanged() )
 		{
 			self.bot.last_next_wp = -1;
