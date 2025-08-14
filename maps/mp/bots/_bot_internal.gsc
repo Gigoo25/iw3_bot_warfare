@@ -192,6 +192,7 @@ resetBotVars()
 	self.bot.prio_objective = false;
 	
 	self.bot.rand = randomint( 100 );
+	self.bot.last_jiggle_time = -1;
 	
 	self BotBuiltinBotStop();
 }
@@ -206,7 +207,16 @@ getAnger()
 	{
 		return 0;
 	}
-	return max( 0, min( 1, self.bot.emotion_anger ) );
+	anger = self.bot.emotion_anger;
+	if ( anger < 0 )
+	{
+		anger = 0;
+	}
+	if ( anger > 1 )
+	{
+		anger = 1;
+	}
+	return anger;
 }
 
 addAnger( amount )
@@ -216,7 +226,14 @@ addAnger( amount )
 		self.bot.emotion_anger = 0;
 	}
 	self.bot.emotion_anger += amount;
-	self.bot.emotion_anger = max( 0, min( 1, self.bot.emotion_anger ) );
+	if ( self.bot.emotion_anger < 0 )
+	{
+		self.bot.emotion_anger = 0;
+	}
+	if ( self.bot.emotion_anger > 1 )
+	{
+		self.bot.emotion_anger = 1;
+	}
 }
 
 emotion_decay()
@@ -248,19 +265,31 @@ getHumanAimJitter( obj, adsAmount )
 		return ( 0, 0, 0 );
 	}
 	
-	// distance factors
-	distClose = self.pers[ "bots" ][ "skill" ][ "dist_start" ] * self.bot.cur_weap_dist_multi;
-	distMax = self.pers[ "bots" ][ "skill" ][ "dist_max" ] * self.bot.cur_weap_dist_multi;
-	linDist = sqrt( max( 0, obj.dist ) );
+	// distance factors (work in squared space to avoid sqrt)
+	distCloseRaw = self.pers[ "bots" ][ "skill" ][ "dist_start" ] * self.bot.cur_weap_dist_multi;
+	distMaxRaw = self.pers[ "bots" ][ "skill" ][ "dist_max" ] * self.bot.cur_weap_dist_multi;
+	distCloseSq = distCloseRaw * distCloseRaw;
+	distMaxSq = distMaxRaw * distMaxRaw;
 	farFrac = 0;
-	if ( distMax > distClose )
+	if ( distMaxSq > distCloseSq )
 	{
-		farFrac = max( 0, min( 1, ( linDist - distClose ) / ( distMax - distClose ) ) );
+		farFrac = ( obj.dist - distCloseSq ) / ( distMaxSq - distCloseSq );
+		if ( farFrac < 0 )
+		{
+			farFrac = 0;
+		}
+		if ( farFrac > 1 )
+		{
+			farFrac = 1;
+		}
 	}
 	
 	// base from difficulty, always have a little jitter even for perfect aim
 	base = self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ];
-	base = max( 0.1, base );
+	if ( base < 0.1 )
+	{
+		base = 0.1;
+	}
 	
 	// stance and movement
 	stance = self getstance();
@@ -1012,6 +1041,11 @@ check_reload()
 	for ( ;; )
 	{
 		self waittill_notify_or_timeout( "weapon_fired", 5 );
+		// sometimes make a poor reload decision under pressure
+		if ( randomint( 100 ) < 12 )
+		{
+			self thread bad_reload_decision();
+		}
 		self thread reload_thread();
 	}
 }
@@ -1050,6 +1084,50 @@ reload_thread()
 	if ( cursize / maxsize < 0.5 )
 	{
 		self thread reload();
+	}
+}
+
+// Occasionally reload at a bad time (human mistake)
+bad_reload_decision()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	// Only trigger if enemy is near/visible-ish and we still have some ammo
+	if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
+	{
+		return;
+	}
+	
+	cur = self getcurrentweapon();
+	if ( cur == "" || cur == "none" )
+	{
+		return;
+	}
+	
+	if ( isweaponcliponly( cur ) )
+	{
+		return;
+	}
+	
+	if ( !self getweaponammostock( cur ) )
+	{
+		return;
+	}
+	
+	// has ammo in mag, but not empty
+	if ( self getweaponammoclip( cur ) <= int( weaponclipsize( cur ) * 0.25 ) )
+	{
+		return;
+	}
+	
+	// close target or recently seen
+	if ( self.bot.target.trace_time < 200 || self.bot.target.dist < ( 800 * 800 ) )
+	{
+		if ( randomint( 100 ) < 35 + int( 30 * self getAnger() ) )
+		{
+			self thread reload();
+		}
 	}
 }
 
@@ -1757,13 +1835,23 @@ aim_loop()
 					{
 						self thread bot_lookat( target gettagorigin( "j_spine4" ), 0.05 );
 					}
-					else if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
+                    else if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
 					{
 						self thread bot_lookat( aimpos, 0.05 );
 					}
 					else
 					{
-						self thread bot_lookat( aimpos, aimspeed, target getvelocity(), true );
+                        // micro-peek: occasionally aim a hair off to simulate wrong-side peek
+                        if ( randomint( 100 ) < 10 )
+                        {
+                            wrongSide = -1;
+                            if ( randomint( 100 ) < 50 )
+                            {
+                                wrongSide = 1;
+                            }
+                            aimpos += ( 6 * wrongSide, 0, 0 );
+                        }
+                        self thread bot_lookat( aimpos, aimspeed, target getvelocity(), true );
 					}
 				}
 				else
@@ -1776,13 +1864,22 @@ aim_loop()
 					
 					conedot = getConeDot( aimpos, eyePos, angles );
 					
-					if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
+                    if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
 					{
 						self thread bot_lookat( aimpos, 0.05 );
 					}
 					else
 					{
-						self thread bot_lookat( aimpos, aimspeed );
+                        if ( randomint( 100 ) < 10 )
+                        {
+                            wrongSide2 = -1;
+                            if ( randomint( 100 ) < 50 )
+                            {
+                                wrongSide2 = 1;
+                            }
+                            aimpos += ( 6 * wrongSide2, 0, 0 );
+                        }
+                        self thread bot_lookat( aimpos, aimspeed );
 					}
 				}
 				
@@ -2162,25 +2259,28 @@ walk_loop()
 	{
 		curweap = self getcurrentweapon();
 		
-		if ( self.bot.target.entity.classname == "script_vehicle" || self.bot.isfraggingafter || self.bot.issmokingafter )
+        if ( self.bot.target.entity.classname == "script_vehicle" || self.bot.isfraggingafter || self.bot.issmokingafter )
 		{
 			return;
 		}
 		
-		if ( isplayer( self.bot.target.entity ) && self.bot.target.trace_time && self canFire( curweap ) && self isInRange( self.bot.target.dist, curweap ) )
+        if ( isplayer( self.bot.target.entity ) && self.bot.target.trace_time && self canFire( curweap ) && self isInRange( self.bot.target.dist, curweap ) )
 		{
 			if ( self inLastStand() || self getstance() == "prone" || ( self.bot.is_cur_sniper && self playerads() > 0 ) )
 			{
 				return;
 			}
 			
+            // micro-movement jiggle to avoid standing still
+            self thread micro_jiggle_movement();
+            
             // impatience/anger: more strafing when angry
             strafeChance2 = self.pers[ "bots" ][ "behavior" ][ "strafe" ];
             strafeChance2 = int( strafeChance2 * ( 1 + 0.4 * self getAnger() ) );
             if ( self.bot.target.rand <= strafeChance2 )
-			{
-				self strafe( self.bot.target.entity );
-			}
+            {
+                self strafe( self.bot.target.entity );
+            }
 			
 			return;
 		}
@@ -2249,10 +2349,68 @@ walk_loop()
 		self notify( "new_goal_internal" );
 	}
 	
-	self doWalk( goal, dist, isScriptGoal );
+    self doWalk( goal, dist, isScriptGoal );
 	self.bot.towards_goal = undefined;
 	self.bot.next_wp = -1;
 	self.bot.second_next_wp = -1;
+}
+
+// Small randomized jitter movement when engaging to emulate human jiggle peeking
+micro_jiggle_movement()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	self endon( "kill_goal" );
+	
+	now = gettime();
+	if ( isdefined( self.bot.last_jiggle_time ) && now - self.bot.last_jiggle_time < 650 )
+	{
+		return;
+	}
+	self.bot.last_jiggle_time = now;
+	
+	if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
+	{
+		return;
+	}
+	
+	// choose a tiny sidestep based on current enemy bearing
+	angles = vectortoangles( vectornormalize( self.bot.target.entity.origin - self.origin ) );
+	left = ( 0, angles[ 1 ] + 90, 0 );
+	right = ( 0, angles[ 1 ] - 90, 0 );
+	choice = left;
+	if ( randomint( 100 ) < 50 )
+	{
+		choice = right;
+	}
+	
+	step = 35 + randomint( 25 );
+	if ( self.bot.issprinting )
+	{
+		step = 55 + randomint( 25 );
+	}
+	
+	from = self.origin + ( 0, 0, 16 );
+	to = from + anglestoforward( choice ) * step;
+	trace = bullettrace( from, to, false, self );
+	moveTo = trace[ "position" ];
+	
+	self botSetMoveTo( moveTo );
+	wait 0.1 + randomfloatrange( 0, 0.1 );
+	// optional counter-jiggle
+	if ( randomint( 100 ) < 60 )
+	{
+		choice = left;
+		if ( randomint( 100 ) < 50 )
+		{
+			choice = right;
+		}
+		to = from + anglestoforward( choice ) * step;
+		trace = bullettrace( from, to, false, self );
+		moveTo = trace[ "position" ];
+		self botSetMoveTo( moveTo );
+		wait 0.1 + randomfloatrange( 0, 0.1 );
+	}
 }
 
 /*
@@ -2485,11 +2643,32 @@ doWalk( goal, dist, isScriptGoal )
 	self.bot.second_next_wp = -1;
 	self notify( "finished_static_waypoints" );
 	
-	if ( distancesquared( self.origin, goal ) > dist )
+    if ( distancesquared( self.origin, goal ) > dist )
 	{
 		self.bot.last_next_wp = -1;
 		self.bot.last_second_next_wp = -1;
-		self movetowards( goal ); // any better way??
+        // wrong corner check: occasionally pick a slightly offset approach vector
+        if ( randomint( 100 ) < 15 )
+        {
+            dir = vectortoangles( goal - self.origin );
+            // 20-40 units side offset
+            sideSign = -1;
+            if ( randomint( 100 ) < 50 )
+            {
+                sideSign = 1;
+            }
+            sideAmt = randomintrange( 20, 40 );
+            side = ( 0, sideSign * sideAmt, 0 );
+            offsetGoal = playerphysicstrace( goal + ( 0, 0, 32 ), goal + anglestoforward( dir + side ) * 64, false, self );
+            if ( distancesquared( offsetGoal, goal ) > 1 )
+            {
+                self movetowards( offsetGoal );
+            }
+        }
+        else
+        {
+            self movetowards( goal ); // any better way??
+        }
 	}
 	
 	self notify( "finished_goal" );
