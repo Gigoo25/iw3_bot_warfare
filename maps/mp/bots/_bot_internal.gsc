@@ -69,6 +69,7 @@ connected()
 	}
 	self thread emotion_decay();
 	self thread listenKilledEnemy();
+	self thread aim_punch_decay();
 	
 	self thread onPlayerSpawned();
 	self thread bot_skip_killcam();
@@ -117,6 +118,8 @@ onKilled( eInflictor, eAttacker, iDamage, sMeansOfDeath, sWeapon, vDir, sHitLoc,
             self addAnger( 0.5 );
         }
     }
+    // reset aim punch on death to avoid carryover jitter
+    self.bot.aim_punch = ( 0, 0, 0 );
 }
 
 /*
@@ -135,6 +138,9 @@ onDamage( eInflictor, eAttacker, iDamage, iDFlags, sMeansOfDeath, sWeapon, vPoin
                 add += 0.1;
             }
             self addAnger( add );
+
+            // apply aim punch
+            self do_aim_punch( iDamage, sHitLoc, sMeansOfDeath );
         }
     }
 }
@@ -193,6 +199,7 @@ resetBotVars()
 	
 	self.bot.rand = randomint( 100 );
 	self.bot.last_jiggle_time = -1;
+	self.bot.aim_punch = ( 0, 0, 0 );
 	
 	self BotBuiltinBotStop();
 }
@@ -337,6 +344,53 @@ getHumanAimJitter( obj, adsAmount )
 	jz = sin( t * 1.1 + pz ) * amplitude * 0.6; // less vertical sway
 	
 	return ( jx, jy, jz );
+}
+
+// Aim punch (view kick) when damaged
+do_aim_punch( dmg, hitLoc, mod )
+{
+	// scale based on damage and hit location
+	mag = dmg * 0.002;
+	if ( hitLoc == "head" )
+	{
+		mag += 0.25;
+	}
+	if ( mod == "MOD_EXPLOSIVE" )
+	{
+		mag += 0.15;
+	}
+	if ( mag > 0.6 )
+	{
+		mag = 0.6;
+	}
+	// random direction bias, more vertical than horizontal
+	upKick = mag * ( 0.5 + randomfloatrange( 0, 0.5 ) );
+	sideKick = mag * randomfloatrange( -0.5, 0.5 );
+	// accumulate
+	ap = self.bot.aim_punch;
+	ap = ( ap[ 0 ] + ( upKick * 20 ), ap[ 1 ] + ( sideKick * 20 ), 0 );
+	self.bot.aim_punch = ap;
+}
+
+aim_punch_decay()
+{
+	self endon( "disconnect" );
+	for ( ;; )
+	{
+		wait 0.05;
+		ap = self.bot.aim_punch;
+		// exponential-style decay
+		ap = ( ap[ 0 ] * 0.8, ap[ 1 ] * 0.8, 0 );
+		if ( abs( ap[ 0 ] ) < 0.01 )
+		{
+			ap = ( 0, ap[ 1 ], 0 );
+		}
+		if ( abs( ap[ 1 ] ) < 0.01 )
+		{
+			ap = ( ap[ 0 ], 0, 0 );
+		}
+		self.bot.aim_punch = ap;
+	}
 }
 
 /*
@@ -782,7 +836,7 @@ reload_watch_loop()
 	{
 		ret = self waittill_any_timeout( 7.5, "reload" );
 		
-		if ( ret == "timeout" )
+        if ( ret == "timeout" )
 		{
 			break;
 		}
@@ -794,7 +848,7 @@ reload_watch_loop()
 			break;
 		}
 		
-		if ( self getweaponammoclip( weap ) >= weaponclipsize( weap ) )
+        if ( self getweaponammoclip( weap ) >= weaponclipsize( weap ) )
 		{
 			break;
 		}
@@ -815,7 +869,22 @@ reload_watch()
 	{
 		self waittill( "reload_start" );
 		
-		self reload_watch_loop();
+        self reload_watch_loop();
+        // reload cancel under fire: if we took damage recently and mag still has bullets, cancel and re-engage
+        if ( self.bot.isreloading )
+        {
+            continue;
+        }
+        weap2 = self getcurrentweapon();
+        if ( weap2 != "none" && self getweaponammoclip( weap2 ) > 0 && isdefined( self.lastattacker ) )
+        {
+            if ( randomint( 100 ) < 75 )
+            {
+                // slight delay to simulate human cancel timing
+                wait randomfloatrange( 0, 0.08 );
+                self notify( "bot_reload" );
+            }
+        }
 	}
 }
 
@@ -984,7 +1053,12 @@ grenade_danger()
 			continue;
 		}
 		
-		self thread watch_grenade( grenade );
+        self thread watch_grenade( grenade );
+        // evasive step even if we can't throw it back
+        if ( randomint( 100 ) < 65 )
+        {
+            self thread micro_jiggle_movement();
+        }
 	}
 }
 
@@ -1904,7 +1978,7 @@ aim_loop()
 				{
 					stopAdsOverride = false;
 					
-					if ( self.bot.is_cur_sniper )
+                    if ( self.bot.is_cur_sniper )
 					{
 						if ( self.pers[ "bots" ][ "behavior" ][ "quickscope" ] && self.bot.last_fire_time != -1 && gettime() - self.bot.last_fire_time < 1000 )
 						{
@@ -1916,9 +1990,10 @@ aim_loop()
 						}
 					}
 					
-					if ( !stopAdsOverride )
+                    if ( !stopAdsOverride )
 					{
-						self thread pressADS();
+                        // apply small latency jitter to ADS timing
+                        self thread pressADS( 0.05 + randomfloatrange( 0, 0.08 ) );
 					}
 				}
 				
@@ -2102,34 +2177,14 @@ botFire()
 	
     if ( self.bot.is_cur_full_auto )
 	{
-        // human-like: prefer bursts when far, longer spray when angry or close
-        dist = 0;
-        if ( isdefined( self.bot.target ) )
-        {
-            dist = self.bot.target.dist;
-        }
-        linDist = sqrt( max( 0, dist ) );
+        // human-like: latency jitter + burst control
+        jitter = randomfloatrange( 0.04, 0.12 );
         anger_fire = self getAnger();
-        burstLen = 0.06; // minimum tap
-        // base burst length scales with distance (shorter far away)
-        if ( linDist > 1500 )
+        if ( anger_fire > randomfloatrange( 0, 1 ) )
         {
-            burstLen = 0.08;
+            jitter *= 0.6; // quicker trigger when angry
         }
-        if ( linDist > 3000 )
-        {
-            burstLen = 0.1;
-        }
-        if ( linDist > 6000 )
-        {
-            burstLen = 0.12;
-        }
-        // anger increases spray time
-        burstLen *= ( 1 + 1.5 * anger_fire );
-        // randomize a bit
-        burstLen += randomfloatrange( -0.02, 0.04 );
-        if ( burstLen < 0.05 ) burstLen = 0.05;
-        if ( burstLen > 0.25 ) burstLen = 0.25;
+        burstLen = jitter;
         self thread pressFire( burstLen );
         return;
 	}
@@ -2154,7 +2209,8 @@ doSemiTime()
 	self endon( "bot_semi_time" );
 	
 	self.bot.semi_time = true;
-	wait self.pers[ "bots" ][ "skill" ][ "semi_time" ];
+    // latency jitter for semi-auto
+    wait self.pers[ "bots" ][ "skill" ][ "semi_time" ] + randomfloatrange( -0.03, 0.06 );
 	self.bot.semi_time = false;
 }
 
@@ -3265,6 +3321,10 @@ bot_lookat( pos, time, vel, doAimPredict )
 	
 	myAngle = self getplayerangles();
 	angles = vectortoangles( ( pos - myEye ) - anglestoforward( myAngle ) );
+
+	// apply aim punch offset into target delta before stepping
+	ap = self.bot.aim_punch;
+	angles = ( angles[ 0 ] + ap[ 0 ], angles[ 1 ] + ap[ 1 ], 0 );
 	
 	X = angleclamp180( angles[ 0 ] - myAngle[ 0 ] );
 	X = X / steps;
