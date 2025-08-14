@@ -31,14 +31,15 @@ added()
 	self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 1; // how long a bot correct's their aim after targeting
 	self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 1; // how far a bot's incorrect aim is
 	self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 0.05; // how often a bot changes their bone target
-	self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_head"; // a list of comma seperated bones the bot will aim at
+	// default to center-mass heavy; head still possible
+	self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_ankle_le,j_ankle_ri,j_head"; // a list of comma separated bones the bot will aim at
 	self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5; // a factor of how much ads to reduce when adsing
 	self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5; // a factor of how much more aimspeed delay to add
 	
 	self.pers[ "bots" ][ "behavior" ] = [];
 	self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 50; // percentage of how often the bot strafes a target
 	self.pers[ "bots" ][ "behavior" ][ "nade" ] = 50; // percentage of how often the bot will grenade
-	self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 50; // percentage of how often the bot will sprint
+    self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 75; // percentage of how often the bot will sprint
 	self.pers[ "bots" ][ "behavior" ][ "camp" ] = 50; // percentage of how often the bot will camp
 	self.pers[ "bots" ][ "behavior" ][ "follow" ] = 50; // percentage of how often the bot will follow
 	self.pers[ "bots" ][ "behavior" ][ "crouch" ] = 10; // percentage of how often the bot will crouch
@@ -958,7 +959,8 @@ stance_loop()
 		chance *= 2;
 	}
 	
-    if ( toStance != "stand" || self.bot.isreloading || self.bot.issprinting || self.bot.isfraggingafter || self.bot.issmokingafter )
+    // allow sprint in crouch but not prone; still block if busy
+    if ( toStance == "prone" || self.bot.isreloading || self.bot.issprinting || self.bot.isfraggingafter || self.bot.issmokingafter )
 	{
 		return;
 	}
@@ -968,9 +970,14 @@ stance_loop()
 		return;
 	}
 	
-	if ( isdefined( self.bot.target ) && self canFire( curweap ) && self isInRange( self.bot.target.dist, curweap ) )
+    if ( isdefined( self.bot.target ) && self canFire( curweap ) && self isInRange( self.bot.target.dist, curweap ) )
 	{
-		return;
+        // still allow sprint if far from target to close the gap
+        distTo = self.bot.target.dist;
+        if ( distTo < level.bots_noadsdistance * level.bots_noadsdistance )
+        {
+            return;
+        }
 	}
 	
 	if ( self.bot.sprintendtime != -1 && time - self.bot.sprintendtime < 2000 )
@@ -1278,7 +1285,7 @@ updateAimOffset( obj )
 		}
 	}
 	
-	aimDiffTime = self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] * 1000;
+    aimDiffTime = self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] * 1000;
 	objCreatedFor = obj.trace_time;
 	
 	if ( objCreatedFor >= aimDiffTime )
@@ -1290,7 +1297,9 @@ updateAimOffset( obj )
 		offsetScalar = 1 - objCreatedFor / aimDiffTime;
 	}
 	
-	obj.aim_offset = obj.aim_offset_base * offsetScalar;
+    // Add small random per-target jitter to reduce perfect head tap potential
+    randJit = ( randomfloatrange( -0.12, 0.12 ), randomfloatrange( -0.12, 0.12 ), 0 );
+    obj.aim_offset = ( obj.aim_offset_base[ 0 ] * offsetScalar + randJit[ 0 ], obj.aim_offset_base[ 1 ] * offsetScalar + randJit[ 1 ], obj.aim_offset_base[ 2 ] * offsetScalar + randJit[ 2 ] );
 }
 
 /*
