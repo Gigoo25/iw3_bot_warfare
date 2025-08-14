@@ -456,6 +456,7 @@ spawned()
 	self thread doBotMovement();
 	self thread watchGrenadeFire();
 	self thread watchPickupGun();
+	self thread anti_idle();
 	
 	self notify( "bot_spawned" );
 }
@@ -2479,6 +2480,116 @@ micro_jiggle_movement()
 	}
 }
 
+// Finds a nearby cover position (near a wall) to move toward
+find_near_cover()
+{
+	org = self.origin + ( 0, 0, 16 );
+	bestPos = undefined;
+	bestFrac = 1.1;
+	for ( i = 0; i < 12; i++ )
+	{
+		ang = ( 0, i * 30, 0 );
+		dir = anglestoforward( ang );
+		trace = bullettrace( org, org + dir * 200, false, self );
+		if ( trace[ "fraction" ] < bestFrac )
+		{
+			bestFrac = trace[ "fraction" ];
+			// position slightly away from wall
+			bestPos = trace[ "position" ] - dir * 24;
+		}
+	}
+	if ( !isdefined( bestPos ) )
+	{
+		// fallback small forward step
+		bestPos = org + anglestoforward( self getplayerangles() ) * 96;
+	}
+	return bestPos;
+}
+
+// Watchdog to prevent open-field idling
+anti_idle()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	idleMs = 0;
+	for ( ;; )
+	{
+		wait 0.25;
+		
+		if ( self.bot.isfrozen || self.bot.stop_move )
+		{
+			idleMs = 0;
+			continue;
+		}
+		
+		if ( isdefined( self.bot.target ) && isdefined( self.bot.target.entity ) )
+		{
+			idleMs = 0;
+			continue;
+		}
+		
+		if ( self HasScriptGoal() || self.bot_lock_goal )
+		{
+			idleMs = 0;
+			continue;
+		}
+		
+		if ( lengthsquared( self getvelocity() ) > 900 )
+		{
+			idleMs = 0;
+			continue;
+		}
+		
+		idleMs += 250;
+		if ( idleMs >= 1000 )
+		{
+			// decide to jiggle or move to cover
+			if ( randomint( 100 ) < 40 )
+			{
+				self thread micro_jiggle_movement();
+			}
+			else
+			{
+				pos = self find_near_cover();
+				self botSetMoveTo( pos );
+			}
+			idleMs = 0;
+		}
+	}
+}
+
+// Quick shoulder check at corners before committing
+shoulder_check( targetPos )
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	self endon( "kill_goal" );
+	
+	// only if close to an obstruction towards the target
+	myEye = self getEyePos();
+	dir = vectortoangles( targetPos - myEye );
+	forward = anglestoforward( dir );
+	trace = bullettrace( myEye, myEye + forward * 64, false, self );
+	if ( trace[ "fraction" ] >= 1 )
+	{
+		return;
+	}
+	
+	leftAng = ( 0, dir[ 1 ] + 20, 0 );
+	rightAng = ( 0, dir[ 1 ] - 20, 0 );
+	peekTime = 0.12 + randomfloatrange( 0, 0.08 );
+	
+	// small left peek
+	posL = myEye + anglestoforward( leftAng ) * 24;
+	self botSetMoveTo( posL );
+	wait peekTime;
+	// then small right peek
+	posR = myEye + anglestoforward( rightAng ) * 24;
+	self botSetMoveTo( posR );
+	wait peekTime;
+}
+
 /*
 	This is the main walking logic for the bot.
 */
@@ -2782,7 +2893,7 @@ movetowards( goal )
 		tempGoalDist = level.bots_goaldistance;
 	}
 	
-	while ( distancesquared( self.origin, goal ) > tempGoalDist )
+    while ( distancesquared( self.origin, goal ) > tempGoalDist )
 	{
 		self botSetMoveTo( goal );
 		
@@ -2834,7 +2945,7 @@ movetowards( goal )
 			}
 		}
 		
-		wait 0.05;
+        wait 0.05;
 		time += 50;
 		
 		if ( lengthsquared( self getvelocity() ) < 1000 )
@@ -2855,7 +2966,13 @@ movetowards( goal )
 			tempGoalDist = level.bots_goaldistance;
 		}
 		
-		if ( stucks >= 2 )
+        // insert shoulder check near obstacles toward goal
+        if ( randomint( 100 ) < 8 )
+        {
+            self thread shoulder_check( goal );
+        }
+
+        if ( stucks >= 2 )
 		{
 			self notify( "bad_path_internal" );
 		}
@@ -2889,6 +3006,16 @@ getRandomLargestStafe( dist )
 	// find a better algo?
 	traces = NewHeap( ::HeapTraceFraction );
 	myOrg = self.origin + ( 0, 0, 16 );
+	
+	// cover-biased: prefer directions with closer wall on back/side
+	// try sampling backwards to find cover first
+	backAngles = ( 0, vectortoangles( self.origin - self.bot.moveto )[ 1 ], 0 );
+	backDir = anglestoforward( backAngles );
+	backTrace = bullettrace( myOrg, myOrg + backDir * -160 * dist, false, self );
+	if ( backTrace[ "fraction" ] < 1 )
+	{
+		return backTrace[ "position" ];
+	}
 	
 	traces HeapInsert( bullettrace( myOrg, myOrg + ( -100 * dist, 0, 0 ), false, self ) );
 	traces HeapInsert( bullettrace( myOrg, myOrg + ( 100 * dist, 0, 0 ), false, self ) );

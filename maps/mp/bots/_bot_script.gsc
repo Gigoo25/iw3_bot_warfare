@@ -2484,7 +2484,37 @@ bot_listen_to_steps_loop()
 		return;
 	}
 	
-	self SetScriptGoal( heard.origin, 64 );
+	// sound mislocalization: sometimes bias the perceived origin by angle/range error
+	loc = heard.origin;
+	if ( randomint( 100 ) < 30 )
+	{
+		vec = loc - self.origin;
+		ang = vectortoangles( vec );
+		// mild error by default
+		delta = randomintrange( -15, 15 );
+		// rare severe misread
+		if ( randomint( 100 ) < 8 )
+		{
+			delta = randomintrange( -110, -75 );
+			if ( randomint( 100 ) < 50 )
+			{
+				delta = randomintrange( 75, 110 );
+			}
+		}
+		radius = distance( loc, self.origin );
+		// small range variance
+		radius = radius + randomintrange( -96, 128 );
+		if ( radius < 64 )
+		{
+			radius = 64;
+		}
+		newYaw = ang[ 1 ] + delta;
+		biased = self.origin + anglestoforward( ( 0, newYaw, 0 ) ) * radius;
+		biased = ( biased[ 0 ], biased[ 1 ], loc[ 2 ] );
+		loc = biased;
+	}
+	
+	self SetScriptGoal( loc, 64 );
 	
 	if ( self waittill_any_return( "goal", "bad_path", "new_goal" ) != "new_goal" )
 	{
