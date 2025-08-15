@@ -263,6 +263,12 @@ class BotAnalyzer:
             ]
         }
         
+        # Convert sets to lists for JSON serialization
+        if 'problematic_bots' in analysis:
+            for bot_name, bot_data in analysis['problematic_bots'].items():
+                if 'stats' in bot_data and 'action_diversity' in bot_data['stats']:
+                    bot_data['stats']['action_diversity'] = list(bot_data['stats']['action_diversity'])
+        
         if output_file:
             with open(output_file, 'w') as f:
                 json.dump(analysis, f, indent=2)
