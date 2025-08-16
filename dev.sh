@@ -90,8 +90,41 @@ echo ""
 
 # Step 3: Wait for server to be ready
 echo -e "${PURPLE}Step 3: Waiting for server to be ready...${NC}"
-sleep 10
-echo -e "${GREEN}✓ Server ready at: $(date)${NC}"
+SERVER_READY_START=$(date)
+
+# Wait for the server to start (using same logic as deploy.sh)
+echo -e "${YELLOW}Checking server startup...${NC}"
+MAX_WAIT=30
+count=0
+connected=false
+
+while [ $count -lt $MAX_WAIT ]; do
+    # Check for script compile errors first
+    if docker compose -f "$SERVER_DIR/$DOCKER_COMPOSE_FILE" logs --tail=50 | grep -q "script compile error\|Sys_Error: script compile error"; then
+        echo -e "\n${RED}Script compile error detected!${NC}"
+        connected=false
+        break
+    fi
+    
+    # Check for successful server startup
+    if docker compose -f "$SERVER_DIR/$DOCKER_COMPOSE_FILE" logs --tail=50 | grep -q "Steam: Server connected successfully"; then
+        connected=true
+        break
+    fi
+    echo -n "."
+    count=$((count+1))
+    sleep 1
+done
+
+echo ""
+if [ "$connected" = true ]; then
+    echo -e "${GREEN}✓ Server ready at: $(date)${NC}"
+else
+    echo -e "${RED}ERROR: Server failed to start correctly!${NC}"
+    echo -e "${YELLOW}Check logs manually: docker compose -f \"$SERVER_DIR/$DOCKER_COMPOSE_FILE\" logs${NC}"
+    echo -e "${RED}Deployment failed! Aborting.${NC}"
+    exit 1
+fi
 echo ""
 
 # Step 4: Run test (fixed 30 seconds)
@@ -178,6 +211,7 @@ echo -e "  Session started:    ${START_TIME}"
 echo -e "  Session ended:      ${END_TIME}"
 echo -e "  Build:              ${BUILD_START} → ${BUILD_END}"
 echo -e "  Deploy:             ${DEPLOY_START} → ${DEPLOY_END}"
+echo -e "  Server ready:       ${SERVER_READY_START} → $(date -d "+$((count+1)) seconds" 2>/dev/null || echo "~$(date)")"
 echo -e "  Test:               ${TEST_START} → ${TEST_END}"
 echo -e "  Wait:               ${WAIT_START} → ${WAIT_END}"
 echo -e "  Analysis:           ${ANALYSIS_START} → ${ANALYSIS_END}"
