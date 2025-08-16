@@ -49,6 +49,59 @@ added()
 	
 	self.pers[ "bots" ][ "behavior" ][ "quickscope" ] = false; // is a quickscoper
 	self.pers[ "bots" ][ "behavior" ][ "initswitch" ] = 10; // percentage of how often the bot will switch weapons on spawn
+	
+	// Combat aggression scaling parameters
+	self.pers[ "bots" ][ "behavior" ][ "combat_aggression" ] = randomintrange( 30, 90 ); // Base combat willingness (30-90%)
+	self.pers[ "bots" ][ "behavior" ][ "engagement_distance" ] = randomintrange( 500, 2000 ); // Preferred engagement range
+	self.pers[ "bots" ][ "behavior" ][ "retreat_threshold" ] = randomintrange( 20, 60 ); // Health % to retreat
+	self.pers[ "bots" ][ "behavior" ][ "pursuit_aggression" ] = randomintrange( 40, 80 ); // How aggressively to chase enemies
+	
+	// Weapon-specific behavior profiles
+	self.pers[ "bots" ][ "weapon_smg_combat_style" ] = "aggressive";
+	self.pers[ "bots" ][ "weapon_smg_preferred_range" ] = 300;
+	self.pers[ "bots" ][ "weapon_smg_movement_style" ] = "rush";
+	self.pers[ "bots" ][ "weapon_smg_cover_usage" ] = 20; // Low cover usage for SMG
+	
+	self.pers[ "bots" ][ "weapon_sniper_combat_style" ] = "tactical";
+	self.pers[ "bots" ][ "weapon_sniper_preferred_range" ] = 800;
+	self.pers[ "bots" ][ "weapon_sniper_movement_style" ] = "positional";
+	self.pers[ "bots" ][ "weapon_sniper_cover_usage" ] = 80; // High cover usage for sniper
+	
+	self.pers[ "bots" ][ "weapon_assault_combat_style" ] = "balanced";
+	self.pers[ "bots" ][ "weapon_assault_preferred_range" ] = 500;
+	self.pers[ "bots" ][ "weapon_assault_movement_style" ] = "adaptive";
+	self.pers[ "bots" ][ "weapon_assault_cover_usage" ] = 50; // Medium cover usage for assault
+	
+	self.pers[ "bots" ][ "weapon_lmg_combat_style" ] = "support";
+	self.pers[ "bots" ][ "weapon_lmg_preferred_range" ] = 600;
+	self.pers[ "bots" ][ "weapon_lmg_movement_style" ] = "suppressive";
+	self.pers[ "bots" ][ "weapon_lmg_cover_usage" ] = 70; // High cover usage for LMG
+	
+	self.pers[ "bots" ][ "weapon_shotgun_combat_style" ] = "close_combat";
+	self.pers[ "bots" ][ "weapon_shotgun_preferred_range" ] = 150;
+	self.pers[ "bots" ][ "weapon_shotgun_movement_style" ] = "rush";
+	self.pers[ "bots" ][ "weapon_shotgun_cover_usage" ] = 30; // Low cover usage for shotgun
+	
+	// Situational awareness parameters
+	self.pers[ "bots" ][ "awareness" ][ "sound_sensitivity" ] = randomintrange( 60, 90 ); // How well bot hears sounds
+	self.pers[ "bots" ][ "awareness" ][ "teammate_death_reaction" ] = randomintrange( 40, 80 ); // How much teammate deaths affect behavior
+	self.pers[ "bots" ][ "awareness" ][ "threat_assessment" ] = randomintrange( 50, 85 ); // How well bot assesses threats
+	self.pers[ "bots" ][ "awareness" ][ "positional_awareness" ] = randomintrange( 45, 85 ); // How aware of map positioning
+	self.pers[ "bots" ][ "awareness" ][ "flank_detection" ] = randomintrange( 30, 75 ); // How well bot detects flanking
+	
+	// Cover usage parameters
+	self.pers[ "bots" ][ "cover" ][ "base_usage" ] = randomintrange( 30, 70 ); // Base cover usage percentage
+	self.pers[ "bots" ][ "cover" ][ "threat_multiplier" ] = randomintrange( 120, 200 ); // How much threat increases cover usage
+	self.pers[ "bots" ][ "cover" ][ "health_threshold" ] = randomintrange( 40, 80 ); // Health % when cover becomes more important
+	self.pers[ "bots" ][ "cover" ][ "reload_cover" ] = randomintrange( 60, 90 ); // How likely to seek cover when reloading
+	self.pers[ "bots" ][ "cover" ][ "retreat_cover" ] = randomintrange( 70, 95 ); // How likely to seek cover when retreating
+	
+	// Suppressive fire parameters
+	self.pers[ "bots" ][ "suppressive" ][ "base_chance" ] = randomintrange( 20, 50 ); // Base chance to use suppressive fire
+	self.pers[ "bots" ][ "suppressive" ][ "teammate_moving_bonus" ] = randomintrange( 30, 60 ); // Bonus when teammates are moving
+	self.pers[ "bots" ][ "suppressive" ][ "ammo_threshold" ] = randomintrange( 20, 50 ); // Minimum ammo % to use suppressive fire
+	self.pers[ "bots" ][ "suppressive" ][ "max_distance" ] = randomintrange( 800, 1500 ); // Maximum distance for suppressive fire
+	self.pers[ "bots" ][ "suppressive" ][ "duration" ] = randomintrange( 2, 6 ); // How long to maintain suppressive fire
 }
 
 /*
@@ -75,6 +128,9 @@ connected()
 	self thread onPlayerSpawned();
 	self thread bot_skip_killcam();
 	self thread onUAVUpdate();
+	self thread situationalAwareness();
+	self thread coverSeeking();
+	self thread suppressiveFire();
 }
 
 /*
@@ -266,6 +322,708 @@ listenKilledEnemy()
 		// Trigger immediate movement to next objective
 		self thread bot_post_kill_movement();
 	}
+}
+
+/*
+	Situational awareness system - monitors sounds, teammate deaths, and threats
+*/
+situationalAwareness()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	// Initialize awareness state
+	self.bot.awareness = [];
+	self.bot.awareness[ "last_sound_time" ] = 0;
+	self.bot.awareness[ "last_teammate_death" ] = 0;
+	self.bot.awareness[ "threat_level" ] = 0;
+	self.bot.awareness[ "flank_warning" ] = false;
+	self.bot.awareness[ "sound_direction" ] = ( 0, 0, 0 );
+	
+	for ( ;; )
+	{
+		wait 0.1;
+		
+		// Update threat assessment based on nearby enemies
+		self updateThreatAssessment();
+		
+		// Check for flanking threats
+		self checkFlankThreats();
+		
+		// Process sound cues (simplified - in real implementation would listen for actual sounds)
+		if ( randomint( 100 ) < self.pers[ "bots" ][ "awareness" ][ "sound_sensitivity" ] / 10 )
+		{
+			self processSoundCue();
+		}
+	}
+}
+
+/*
+	Update threat assessment based on nearby enemies and situation
+*/
+updateThreatAssessment()
+{
+	threatLevel = 0;
+	myPos = self.origin;
+	
+	// Check for nearby enemies
+	playercount = level.players.size;
+	for ( i = 0; i < playercount; i++ )
+	{
+		player = level.players[ i ];
+		
+		if ( !isalive( player ) || player == self )
+		{
+			continue;
+		}
+		
+		if ( level.teambased && player.team == self.team )
+		{
+			continue;
+		}
+		
+		dist = distance( myPos, player.origin );
+		
+		// Add threat based on distance and awareness
+		if ( dist < 500 )
+		{
+			threatLevel += 30;
+		}
+		else if ( dist < 1000 )
+		{
+			threatLevel += 15;
+		}
+		else if ( dist < 2000 )
+		{
+			threatLevel += 5;
+		}
+	}
+	
+	// Apply awareness modifier
+	awarenessModifier = self.pers[ "bots" ][ "awareness" ][ "threat_assessment" ] / 100.0;
+	self.bot.awareness[ "threat_level" ] = threatLevel * awarenessModifier;
+}
+
+/*
+	Check for potential flanking threats
+*/
+checkFlankThreats()
+{
+	myPos = self.origin;
+	myAngles = self getplayerangles();
+	flankWarning = false;
+	
+	// Check for enemies behind or to the sides
+	playercount = level.players.size;
+	for ( i = 0; i < playercount; i++ )
+	{
+		player = level.players[ i ];
+		
+		if ( !isalive( player ) || player == self )
+		{
+			continue;
+		}
+		
+		if ( level.teambased && player.team == self.team )
+		{
+			continue;
+		}
+		
+		dist = distance( myPos, player.origin );
+		
+		if ( dist < 800 )
+		{
+			// Calculate angle to enemy
+			dirToEnemy = player.origin - myPos;
+			angleToEnemy = vectortoangles( dirToEnemy );
+			angleDiff = abs( angleToEnemy[ 1 ] - myAngles[ 1 ] );
+			
+			// Check if enemy is behind or to the side
+			if ( angleDiff > 90 && angleDiff < 270 )
+			{
+				flankWarning = true;
+				break;
+			}
+		}
+	}
+	
+	// Apply flank detection modifier
+	flankModifier = self.pers[ "bots" ][ "awareness" ][ "flank_detection" ] / 100.0;
+	self.bot.awareness[ "flank_warning" ] = flankWarning && ( randomint( 100 ) < flankModifier * 100 );
+}
+
+/*
+	Process sound cues (simplified implementation)
+*/
+processSoundCue()
+{
+	// In a real implementation, this would listen for actual sound events
+	// For now, we'll simulate sound detection based on awareness
+	soundSensitivity = self.pers[ "bots" ][ "awareness" ][ "sound_sensitivity" ];
+	
+	if ( randomint( 100 ) < soundSensitivity / 5 )
+	{
+		self.bot.awareness[ "last_sound_time" ] = gettime();
+		
+		// Simulate sound direction (random direction for now)
+		randomAngle = randomint( 360 );
+		self.bot.awareness[ "sound_direction" ] = anglestoforward( ( 0, randomAngle, 0 ) );
+		
+		// Increase threat level temporarily
+		self.bot.awareness[ "threat_level" ] += 20;
+	}
+}
+
+/*
+	Handle teammate death reactions
+*/
+onTeammateDeath( deadPlayer )
+{
+	if ( !level.teambased )
+	{
+		return;
+	}
+	
+	teammateDeathReaction = self.pers[ "bots" ][ "awareness" ][ "teammate_death_reaction" ];
+	
+	// Record teammate death
+	self.bot.awareness[ "last_teammate_death" ] = gettime();
+	
+	// Increase threat level based on reaction sensitivity
+	threatIncrease = teammateDeathReaction / 2;
+	self.bot.awareness[ "threat_level" ] += threatIncrease;
+	
+	// Trigger defensive behavior if high reaction sensitivity
+	if ( teammateDeathReaction > 60 )
+	{
+		self thread defensiveBehavior();
+	}
+}
+
+/*
+	Cover seeking system - dynamically adjusts cover usage based on situation
+*/
+coverSeeking()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	// Initialize cover state
+	self.bot.cover = [];
+	self.bot.cover[ "seeking_cover" ] = false;
+	self.bot.cover[ "current_cover_quality" ] = 0;
+	self.bot.cover[ "last_cover_check" ] = 0;
+	
+	for ( ;; )
+	{
+		wait 0.5;
+		
+		// Update cover usage based on current situation
+		self updateCoverUsage();
+		
+		// Check if we need to seek cover
+		if ( self shouldSeekCover() )
+		{
+			self seekCover();
+		}
+	}
+}
+
+/*
+	Update cover usage based on current situation
+*/
+updateCoverUsage()
+{
+	baseCoverUsage = self.pers[ "bots" ][ "cover" ][ "base_usage" ];
+	threatMultiplier = self.pers[ "bots" ][ "cover" ][ "threat_multiplier" ] / 100.0;
+	healthThreshold = self.pers[ "bots" ][ "cover" ][ "health_threshold" ];
+	
+	// Get current health percentage
+	currentHealth = self.health;
+	maxHealth = 100; // Standard COD4 max health
+	healthPercent = ( currentHealth / maxHealth ) * 100;
+	
+	// Calculate dynamic cover usage
+	dynamicCoverUsage = baseCoverUsage;
+	
+	// Increase cover usage based on threat level
+	if ( isdefined( self.bot.awareness ) && isdefined( self.bot.awareness[ "threat_level" ] ) )
+	{
+		threatLevel = self.bot.awareness[ "threat_level" ];
+		if ( threatLevel > 30 )
+		{
+			dynamicCoverUsage *= threatMultiplier;
+		}
+	}
+	
+	// Increase cover usage when health is low
+	if ( healthPercent < healthThreshold )
+	{
+		healthModifier = ( healthThreshold - healthPercent ) / healthThreshold;
+		dynamicCoverUsage *= ( 1.0 + healthModifier );
+	}
+	
+	// Apply weapon-specific cover usage
+	if ( isdefined( self.bot.weapon_cover_usage ) )
+	{
+		weaponCoverModifier = self.bot.weapon_cover_usage / 100.0;
+		dynamicCoverUsage *= weaponCoverModifier;
+	}
+	
+	// Cap at maximum 95%
+	if ( dynamicCoverUsage > 95 )
+	{
+		dynamicCoverUsage = 95;
+	}
+	
+	// Update behavior parameters
+	self.pers[ "bots" ][ "behavior" ][ "camp" ] = dynamicCoverUsage;
+}
+
+/*
+	Suppressive fire system - provides covering fire when teammates are moving
+*/
+suppressiveFire()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	// Initialize suppressive fire state
+	self.bot.suppressive = [];
+	self.bot.suppressive[ "active" ] = false;
+	self.bot.suppressive[ "target_pos" ] = ( 0, 0, 0 );
+	self.bot.suppressive[ "start_time" ] = 0;
+	
+	for ( ;; )
+	{
+		wait 1.0;
+		
+		// Check if we should start suppressive fire
+		if ( !self.bot.suppressive[ "active" ] && self shouldUseSuppressiveFire() )
+		{
+			self startSuppressiveFire();
+		}
+		
+		// Check if we should stop suppressive fire
+		if ( self.bot.suppressive[ "active" ] && self shouldStopSuppressiveFire() )
+		{
+			self stopSuppressiveFire();
+		}
+	}
+}
+
+/*
+	Check if we should use suppressive fire
+*/
+shouldUseSuppressiveFire()
+{
+	// Check base chance
+	baseChance = self.pers[ "bots" ][ "suppressive" ][ "base_chance" ];
+	
+	// Check if we have enough ammo
+	ammoThreshold = self.pers[ "bots" ][ "suppressive" ][ "ammo_threshold" ];
+	currentAmmo = self getweaponammoclip( self getcurrentweapon() );
+	maxAmmo = weaponclipsize( self getcurrentweapon() );
+	
+	if ( maxAmmo > 0 )
+	{
+		ammoPercent = ( currentAmmo / maxAmmo ) * 100;
+		if ( ammoPercent < ammoThreshold )
+		{
+			return false;
+		}
+	}
+	
+	// Check if teammates are moving nearby
+	teammateBonus = 0;
+	playercount = level.players.size;
+	
+	for ( i = 0; i < playercount; i++ )
+	{
+		teammate = level.players[ i ];
+		if ( teammate == self || !teammate.team == self.team )
+		{
+			continue;
+		}
+		
+		// Check if teammate is moving and within range
+		distance = distance( self.origin, teammate.origin );
+		maxDistance = self.pers[ "bots" ][ "suppressive" ][ "max_distance" ];
+		
+		if ( distance < maxDistance && teammate.velocity[ 0 ] != 0 && teammate.velocity[ 1 ] != 0 )
+		{
+			teammateBonus = self.pers[ "bots" ][ "suppressive" ][ "teammate_moving_bonus" ];
+			break;
+		}
+	}
+	
+	// Calculate final chance
+	finalChance = baseChance + teammateBonus;
+	
+	return randomint( 100 ) < finalChance;
+}
+
+/*
+	Start suppressive fire
+*/
+startSuppressiveFire()
+{
+	// Find a good target position for suppressive fire
+	targetPos = self findSuppressiveFireTarget();
+	
+	if ( targetPos != ( 0, 0, 0 ) )
+	{
+		self.bot.suppressive[ "active" ] = true;
+		self.bot.suppressive[ "target_pos" ] = targetPos;
+		self.bot.suppressive[ "start_time" ] = gettime();
+		
+		// Start firing at the target position
+		self thread fireAtPosition( targetPos );
+	}
+}
+
+/*
+	Stop suppressive fire
+*/
+stopSuppressiveFire()
+{
+	self.bot.suppressive[ "active" ] = false;
+	self.bot.suppressive[ "target_pos" ] = ( 0, 0, 0 );
+	self.bot.suppressive[ "start_time" ] = 0;
+}
+
+/*
+	Check if we should stop suppressive fire
+*/
+shouldStopSuppressiveFire()
+{
+	if ( !self.bot.suppressive[ "active" ] )
+	{
+		return false;
+	}
+	
+	// Check duration
+	duration = self.pers[ "bots" ][ "suppressive" ][ "duration" ];
+	elapsed = ( gettime() - self.bot.suppressive[ "start_time" ] ) / 1000.0;
+	
+	if ( elapsed > duration )
+	{
+		return true;
+	}
+	
+	// Check if we're out of ammo
+	ammoThreshold = self.pers[ "bots" ][ "suppressive" ][ "ammo_threshold" ];
+	currentAmmo = self getweaponammoclip( self getcurrentweapon() );
+	maxAmmo = weaponclipsize( self getcurrentweapon() );
+	
+	if ( maxAmmo > 0 )
+	{
+		ammoPercent = ( currentAmmo / maxAmmo ) * 100;
+		if ( ammoPercent < ammoThreshold )
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+/*
+	Find a good target position for suppressive fire
+*/
+findSuppressiveFireTarget()
+{
+	// Look for enemy positions or common enemy areas
+	playercount = level.players.size;
+	bestTarget = ( 0, 0, 0 );
+	bestScore = 0;
+	
+	for ( i = 0; i < playercount; i++ )
+	{
+		enemy = level.players[ i ];
+		if ( enemy.team == self.team )
+		{
+			continue;
+		}
+		
+		distance = distance( self.origin, enemy.origin );
+		maxDistance = self.pers[ "bots" ][ "suppressive" ][ "max_distance" ];
+		
+		if ( distance < maxDistance )
+		{
+			// Score based on distance and threat level
+			score = ( maxDistance - distance ) / maxDistance * 100;
+			if ( score > bestScore )
+			{
+				bestScore = score;
+				bestTarget = enemy.origin;
+			}
+		}
+	}
+	
+	return bestTarget;
+}
+
+/*
+	Fire at a specific position for suppressive fire
+*/
+fireAtPosition( targetPos )
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	self endon( "stop_suppressive" );
+	
+	// Aim at the target position
+	self thread bot_lookat( targetPos, 0.1 );
+	
+	// Fire in bursts
+	for ( ;; )
+	{
+		if ( !self.bot.suppressive[ "active" ] )
+		{
+			break;
+		}
+		
+		// Fire a burst
+		self thread BotPressAttack( 0.2 );
+		wait 0.5;
+	}
+}
+
+/*
+	Determine if bot should seek cover
+*/
+shouldSeekCover()
+{
+	// Check if we're already seeking cover
+	if ( self.bot.cover[ "seeking_cover" ] )
+	{
+		return false;
+	}
+	
+	// Check health-based cover seeking
+	healthThreshold = self.pers[ "bots" ][ "cover" ][ "health_threshold" ];
+	currentHealth = self.health;
+	maxHealth = 100; // Standard COD4 max health
+	healthPercent = ( currentHealth / maxHealth ) * 100;
+	
+	if ( healthPercent < healthThreshold )
+	{
+		return true;
+	}
+	
+	// Check threat-based cover seeking
+	if ( isdefined( self.bot.awareness ) && isdefined( self.bot.awareness[ "threat_level" ] ) )
+	{
+		threatLevel = self.bot.awareness[ "threat_level" ];
+		if ( threatLevel > 60 )
+		{
+			return true;
+		}
+	}
+	
+	// Check if we're reloading
+	if ( self.bot.isreloading )
+	{
+		reloadCoverChance = self.pers[ "bots" ][ "cover" ][ "reload_cover" ];
+		if ( randomint( 100 ) < reloadCoverChance )
+		{
+			return true;
+		}
+	}
+	
+	// Check if we're retreating
+	if ( isdefined( self.bot.retreating ) && self.bot.retreating )
+	{
+		retreatCoverChance = self.pers[ "bots" ][ "cover" ][ "retreat_cover" ];
+		if ( randomint( 100 ) < retreatCoverChance )
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+/*
+	Seek cover based on current situation
+*/
+seekCover()
+{
+	self.bot.cover[ "seeking_cover" ] = true;
+	
+	// Find nearby cover positions (simplified - would use actual map cover data)
+	myPos = self.origin;
+	bestCoverPos = undefined;
+	bestCoverQuality = 0;
+	
+	// Simulate finding cover positions
+	for ( i = 0; i < 5; i++ )
+	{
+		// Generate random cover position within reasonable distance
+		randomAngle = randomint( 360 );
+		randomDistance = randomintrange( 100, 300 );
+		coverPos = myPos + anglestoforward( ( 0, randomAngle, 0 ) ) * randomDistance;
+		
+		// Calculate cover quality based on distance from threats
+		coverQuality = self calculateCoverQuality( coverPos );
+		
+		if ( coverQuality > bestCoverQuality )
+		{
+			bestCoverQuality = coverQuality;
+			bestCoverPos = coverPos;
+		}
+	}
+	
+	// Move to cover if we found a good position
+	if ( isdefined( bestCoverPos ) && bestCoverQuality > 30 )
+	{
+		self.bot.cover[ "current_cover_quality" ] = bestCoverQuality;
+		self.bot.cover[ "last_cover_check" ] = gettime();
+		
+		// Set movement goal to cover position
+		self movetowards( bestCoverPos );
+		
+		// Wait a bit before allowing new cover seeking
+		wait 3.0;
+	}
+	
+	self.bot.cover[ "seeking_cover" ] = false;
+}
+
+/*
+	Calculate cover quality for a position
+*/
+calculateCoverQuality( position )
+{
+	quality = 50; // Base quality
+	
+	// Check distance from current position
+	myPos = self.origin;
+	distanceFromMe = distance( myPos, position );
+	
+	// Prefer closer cover
+	if ( distanceFromMe < 200 )
+	{
+		quality += 20;
+	}
+	else if ( distanceFromMe > 500 )
+	{
+		quality -= 20;
+	}
+	
+	// Check distance from threats
+	playercount = level.players.size;
+	for ( i = 0; i < playercount; i++ )
+	{
+		player = level.players[ i ];
+		
+		if ( !isalive( player ) || player == self )
+		{
+			continue;
+		}
+		
+		if ( level.teambased && player.team == self.team )
+		{
+			continue;
+		}
+		
+		threatDistance = distance( position, player.origin );
+		
+		// Prefer cover that's far from threats
+		if ( threatDistance > 400 )
+		{
+			quality += 15;
+		}
+		else if ( threatDistance < 200 )
+		{
+			quality -= 30;
+		}
+	}
+	
+	return quality;
+}
+
+/*
+	Defensive behavior triggered by high threat or teammate deaths
+*/
+defensiveBehavior()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	// Increase cover usage temporarily
+	originalCoverUsage = self.pers[ "bots" ][ "behavior" ][ "camp" ];
+	self.pers[ "bots" ][ "behavior" ][ "camp" ] = min( 90, originalCoverUsage + 30 );
+	
+	// Wait for threat to decrease
+	wait 5.0;
+	
+	// Restore original behavior
+	self.pers[ "bots" ][ "behavior" ][ "camp" ] = originalCoverUsage;
+}
+
+/*
+	Get weapon-specific behavior parameters based on current weapon
+*/
+getWeaponBehaviorParams()
+{
+	curweap = self getcurrentweapon();
+	weaponClass = weaponclass( curweap );
+	
+	// Default values
+	combatStyle = "balanced";
+	preferredRange = 500;
+	movementStyle = "adaptive";
+	coverUsage = 50;
+	
+	// Apply weapon-specific behavior based on weapon class
+	switch ( weaponClass )
+	{
+		case "weapon_smg":
+			combatStyle = self.pers[ "bots" ][ "weapon_smg_combat_style" ];
+			preferredRange = self.pers[ "bots" ][ "weapon_smg_preferred_range" ];
+			movementStyle = self.pers[ "bots" ][ "weapon_smg_movement_style" ];
+			coverUsage = self.pers[ "bots" ][ "weapon_smg_cover_usage" ];
+			break;
+			
+		case "weapon_sniper":
+			combatStyle = self.pers[ "bots" ][ "weapon_sniper_combat_style" ];
+			preferredRange = self.pers[ "bots" ][ "weapon_sniper_preferred_range" ];
+			movementStyle = self.pers[ "bots" ][ "weapon_sniper_movement_style" ];
+			coverUsage = self.pers[ "bots" ][ "weapon_sniper_cover_usage" ];
+			break;
+			
+		case "weapon_assault":
+			combatStyle = self.pers[ "bots" ][ "weapon_assault_combat_style" ];
+			preferredRange = self.pers[ "bots" ][ "weapon_assault_preferred_range" ];
+			movementStyle = self.pers[ "bots" ][ "weapon_assault_movement_style" ];
+			coverUsage = self.pers[ "bots" ][ "weapon_assault_cover_usage" ];
+			break;
+			
+		case "weapon_lmg":
+			combatStyle = self.pers[ "bots" ][ "weapon_lmg_combat_style" ];
+			preferredRange = self.pers[ "bots" ][ "weapon_lmg_preferred_range" ];
+			movementStyle = self.pers[ "bots" ][ "weapon_lmg_movement_style" ];
+			coverUsage = self.pers[ "bots" ][ "weapon_lmg_cover_usage" ];
+			break;
+			
+		case "weapon_shotgun":
+			combatStyle = self.pers[ "bots" ][ "weapon_shotgun_combat_style" ];
+			preferredRange = self.pers[ "bots" ][ "weapon_shotgun_preferred_range" ];
+			movementStyle = self.pers[ "bots" ][ "weapon_shotgun_movement_style" ];
+			coverUsage = self.pers[ "bots" ][ "weapon_shotgun_cover_usage" ];
+			break;
+	}
+	
+	// Store parameters in bot struct for access
+	self.bot.weapon_combat_style = combatStyle;
+	self.bot.weapon_preferred_range = preferredRange;
+	self.bot.weapon_movement_style = movementStyle;
+	self.bot.weapon_cover_usage = coverUsage;
+	
+	// Return preferred range for compatibility
+	return preferredRange;
 }
 
 getHumanAimJitter( obj, adsAmount )
@@ -1558,16 +2316,98 @@ target_loop()
 	
 	bestKeys = getarraykeys( bestTargets );
 	
+	// Combat aggression scaling: more aggressive bots prefer closer targets
+	combatAggression = self.pers[ "bots" ][ "behavior" ][ "combat_aggression" ];
+	engagementDistance = self.pers[ "bots" ][ "behavior" ][ "engagement_distance" ];
+	
+	// Get weapon-specific behavior parameters
+	self getWeaponBehaviorParams();
+	weaponCombatStyle = self.bot.weapon_combat_style;
+	weaponPreferredRange = self.bot.weapon_preferred_range;
+	weaponMovementStyle = self.bot.weapon_movement_style;
+	weaponCoverUsage = self.bot.weapon_cover_usage;
+	
 	for ( i = bestKeys.size - 1; i >= 0; i-- )
 	{
 		theDist = bestTargets[ bestKeys[ i ] ].dist;
 		
-		if ( theDist > closest )
+		// Apply combat aggression scaling to target selection
+		// More aggressive bots (higher combat_aggression) prefer closer targets
+		// Less aggressive bots (lower combat_aggression) are more willing to engage distant targets
+		aggressionModifier = ( 100 - combatAggression ) / 100.0; // 0.1 to 0.7
+		effectiveDistance = theDist * ( 1.0 + aggressionModifier );
+		
+		// Apply weapon-specific behavior modifications
+		weaponRangeModifier = 1.0;
+		if ( theDist > weaponPreferredRange * weaponPreferredRange )
+		{
+			// Apply penalty for targets outside weapon's preferred range
+			weaponRangeModifier = 1.5;
+		}
+		else if ( theDist < weaponPreferredRange * weaponPreferredRange * 0.25 )
+		{
+			// Apply penalty for targets too close for weapon's optimal range
+			weaponRangeModifier = 1.3;
+		}
+		
+		// Apply weapon-specific combat style modifiers
+		combatStyleModifier = 1.0;
+		switch ( weaponCombatStyle )
+		{
+			case "aggressive":
+				// Aggressive weapons prefer closer targets
+				combatStyleModifier = 0.8;
+				break;
+			case "tactical":
+				// Tactical weapons prefer medium-range targets
+				combatStyleModifier = 1.2;
+				break;
+			case "support":
+				// Support weapons are more flexible with range
+				combatStyleModifier = 1.0;
+				break;
+			case "close_combat":
+				// Close combat weapons heavily prefer very close targets
+				combatStyleModifier = 0.6;
+				break;
+		}
+		
+		effectiveDistance *= weaponRangeModifier * combatStyleModifier;
+		
+		// Apply situational awareness modifiers
+		awarenessModifier = 1.0;
+		
+		// High threat level makes bots more cautious about distant targets
+		if ( isdefined( self.bot.awareness ) && isdefined( self.bot.awareness[ "threat_level" ] ) )
+		{
+			threatLevel = self.bot.awareness[ "threat_level" ];
+			if ( threatLevel > 50 )
+			{
+				awarenessModifier *= 1.3; // More cautious under high threat
+			}
+		}
+		
+		// Flank warning makes bots prefer closer targets
+		if ( isdefined( self.bot.awareness ) && isdefined( self.bot.awareness[ "flank_warning" ] ) && self.bot.awareness[ "flank_warning" ] )
+		{
+			awarenessModifier *= 1.5; // Much more cautious when flanked
+		}
+		
+		effectiveDistance *= awarenessModifier;
+		
+		// Check if target is within preferred engagement distance
+		if ( theDist > engagementDistance * engagementDistance )
+		{
+			// For distant targets, apply additional penalty based on aggression
+			effectiveDistance *= ( 1.0 + ( 100 - combatAggression ) / 50.0 );
+		}
+		
+		if ( effectiveDistance > closest )
 		{
 			continue;
 		}
 		
-		closest = theDist;
+		closest = effectiveDistance;
 		toBeTarget = bestTargets[ bestKeys[ i ] ];
 	}
 	
