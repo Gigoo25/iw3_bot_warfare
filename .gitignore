@@ -8,3 +8,4 @@ q3config_server.cfg
 qconsole.log.old
 output/
 .vscode
+bot_analysis_*
