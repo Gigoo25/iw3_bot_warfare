@@ -8,7 +8,6 @@
 */
 init()
 {
-	println( "Bot Warfare: Initializing mod..." );
 	level.bw_version = "2.3.0";
 	
 	if ( getdvar( "bots_main" ) == "" )
@@ -38,11 +37,6 @@ init()
 	if ( getdvar( "bots_main_firstIsHost" ) == "" )
 	{
 		setdvar( "bots_main_firstIsHost", true ); // first player to connect is a host
-	}
-	
-	if ( getdvar( "bots_main_logfile" ) == "" )
-	{
-		setdvar( "bots_main_logfile", 0 ); // enable bot action logging to console (0=disabled, 1=enabled)
 	}
 	
 	if ( getdvar( "bots_main_waitForHostTime" ) == "" )
@@ -491,11 +485,6 @@ connected()
 {
 	self endon( "disconnect" );
 	
-	if ( self is_bot() )
-	{
-		self sayall( "Bot Warfare: Bot connected: " + self.name );
-	}
-	
 	for ( i = 0; i < level.bots.size; i++ )
 	{
 		bot = level.bots[ i ];
@@ -537,8 +526,6 @@ connected()
 
 	waittillframeend; // wait for waittills to process
 	level notify( "bot_connected", self );
-	
-	// No cleanup needed for console logging
 }
 
 /*
@@ -547,16 +534,6 @@ connected()
 watchBotDebugEvent()
 {
 	self endon( "disconnect" );
-	
-	// Initialize console logging if enabled
-	if ( getdvarint( "bots_main_logfile" ) >= 1 )
-	{
-		if ( !isdefined( level.bot_logging_initialized ) )
-		{
-			self sayall( "Bot Warfare: Console logging enabled - all bot actions will be logged" );
-			level.bot_logging_initialized = true;
-		}
-	}
 	
 	for ( ;; )
 	{
@@ -603,43 +580,7 @@ watchBotDebugEvent()
 			
 			BotBuiltinPrintConsole( big_str );
 		}
-		
-		// Log to console if logging is enabled (independent of debug level)
-		if ( getdvarint( "bots_main_logfile" ) >= 1 )
-		{
-			log_entry = "BOT_ACTION: " + self.name + " - " + msg;
-			if ( isdefined( str ) && isstring( str ) )
-			{
-				log_entry += " - " + str;
-			}
-			if ( isdefined( b ) && isstring( b ) )
-			{
-				log_entry += " - " + b;
-			}
-			if ( isdefined( c ) && isstring( c ) )
-			{
-				log_entry += " - " + c;
-			}
-			if ( isdefined( d ) && isstring( d ) )
-			{
-				log_entry += " - " + d;
-			}
-			if ( isdefined( e ) && isstring( e ) )
-			{
-				log_entry += " - " + e;
-			}
-			if ( isdefined( f ) && isstring( f ) )
-			{
-				log_entry += " - " + f;
-			}
-			if ( isdefined( g ) && isstring( g ) )
-			{
-				log_entry += " - " + g;
-			}
-			self sayall( log_entry );
-		}
-		
-		if ( msg == "debug" && getdvarint( "bots_main_debug" ) )
+		else if ( msg == "debug" && getdvarint( "bots_main_debug" ) )
 		{
 			BotBuiltinPrintConsole( "Bot Warfare debug: " + self.name + ": " + str );
 		}
@@ -1392,5 +1333,3 @@ monitor_player_turret( player )
 		wait 0.05;
 	}
 }
-
-// Console logging cleanup function removed - no longer needed

@@ -428,17 +428,17 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "spawn_time" ] = 0.75;
 					self.pers[ "bots" ][ "skill" ][ "help_dist" ] = 0;
 					self.pers[ "bots" ][ "skill" ][ "semi_time" ] = 0.9;
-					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.25;
+					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 1;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 1.5;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 4;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 2;
-					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_spineupper,j_ankle_le,j_ankle_ri";
+					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_ankle_le,j_ankle_ri";
 					self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5;
 					
 					self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 0;
 					self.pers[ "bots" ][ "behavior" ][ "nade" ] = 10;
-                    self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 55;
+					self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 30;
 					self.pers[ "bots" ][ "behavior" ][ "camp" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "follow" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "crouch" ] = 20;
@@ -460,17 +460,17 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "spawn_time" ] = 0.65;
 					self.pers[ "bots" ][ "skill" ][ "help_dist" ] = 500;
 					self.pers[ "bots" ][ "skill" ][ "semi_time" ] = 0.75;
-					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.4;
+					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.75;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 1;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 3;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 1.5;
-					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_spineupper,j_ankle_le,j_ankle_ri";
+					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_ankle_le,j_ankle_ri,j_head";
 					self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5;
 					
 					self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 10;
 					self.pers[ "bots" ][ "behavior" ][ "nade" ] = 15;
-                    self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 60;
+					self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 45;
 					self.pers[ "bots" ][ "behavior" ][ "camp" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "follow" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "crouch" ] = 15;
@@ -492,17 +492,17 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "spawn_time" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "help_dist" ] = 750;
 					self.pers[ "bots" ][ "skill" ][ "semi_time" ] = 0.65;
-					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.3;
+					self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] = 0.65;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 0.75;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 2.5;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 1;
-					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_spineupper,j_ankle_le,j_ankle_ri";
+					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_spineupper,j_ankle_le,j_ankle_ri,j_head";
 					self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5;
 					
 					self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 20;
 					self.pers[ "bots" ][ "behavior" ][ "nade" ] = 20;
-                    self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 65;
+					self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 50;
 					self.pers[ "bots" ][ "behavior" ][ "camp" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "follow" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "crouch" ] = 10;
@@ -528,13 +528,13 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 2;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 0.75;
-					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_spineupper,j_ankle_le,j_ankle_ri,j_spineupper";
+					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_spineupper,j_ankle_le,j_ankle_ri,j_head,j_head";
 					self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5;
 					
 					self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 30;
 					self.pers[ "bots" ][ "behavior" ][ "nade" ] = 25;
-                    self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 70;
+					self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 55;
 					self.pers[ "bots" ][ "behavior" ][ "camp" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "follow" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "crouch" ] = 10;
@@ -560,13 +560,13 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 0.35;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 1.5;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 0.5;
-					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_spineupper";
+					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_head";
 					self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5;
 					
 					self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 40;
 					self.pers[ "bots" ][ "behavior" ][ "nade" ] = 35;
-                    self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 75;
+					self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 60;
 					self.pers[ "bots" ][ "behavior" ][ "camp" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "follow" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "crouch" ] = 10;
@@ -592,13 +592,13 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 0.25;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 1;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 0.25;
-					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_spineupper,j_spineupper";
+					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_head,j_head";
 					self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5;
 					
 					self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 50;
 					self.pers[ "bots" ][ "behavior" ][ "nade" ] = 45;
-                    self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 80;
+					self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 65;
 					self.pers[ "bots" ][ "behavior" ][ "camp" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "follow" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "crouch" ] = 10;
@@ -624,13 +624,13 @@ difficulty()
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 0;
 					self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 0;
 					self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 0.05;
-					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper";
+					self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_head";
 					self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5;
 					self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5;
 					
 					self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 65;
 					self.pers[ "bots" ][ "behavior" ][ "nade" ] = 65;
-                    self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 85;
+					self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 70;
 					self.pers[ "bots" ][ "behavior" ][ "camp" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "follow" ] = 5;
 					self.pers[ "bots" ][ "behavior" ][ "crouch" ] = 5;
@@ -682,7 +682,7 @@ set_diff()
 			self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = randomfloatrange( 0.05, 1 );
 			self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = randomfloatrange( 0.05, 1 );
 			self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = randomfloatrange( 0.05, 1 );
-			self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_spineupper,j_ankle_ri,j_ankle_le";
+			self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_head,j_spineupper,j_ankle_ri,j_ankle_le";
 			
 			self.pers[ "bots" ][ "behavior" ][ "strafe" ] = randomint( 100 );
 			self.pers[ "bots" ][ "behavior" ][ "nade" ] = randomint( 100 );
@@ -2484,55 +2484,7 @@ bot_listen_to_steps_loop()
 		return;
 	}
 	
-	// sound mislocalization: sometimes bias the perceived origin by angle/range error
-	loc = heard.origin;
-	if ( randomint( 100 ) < 30 )
-	{
-		vec = loc - self.origin;
-		ang = vectortoangles( vec );
-		// mild error by default
-		delta = randomintrange( -15, 15 );
-		// rare severe misread
-		if ( randomint( 100 ) < 8 )
-		{
-			delta = randomintrange( -110, -75 );
-			if ( randomint( 100 ) < 50 )
-			{
-				delta = randomintrange( 75, 110 );
-			}
-		}
-		radius = distance( loc, self.origin );
-		// small range variance
-		radius = radius + randomintrange( -96, 128 );
-		if ( radius < 64 )
-		{
-			radius = 64;
-		}
-		newYaw = ang[ 1 ] + delta;
-		biased = self.origin + anglestoforward( ( 0, newYaw, 0 ) ) * radius;
-		biased = ( biased[ 0 ], biased[ 1 ], loc[ 2 ] );
-		loc = biased;
-	}
-	
-	// if direct LOS to perceived location is blocked, bias to a nearby open angle
-	if ( !bullettracepassed( self getEyePos(), loc + ( 0, 0, 40 ), false, self ) )
-	{
-		ang2 = vectortoangles( loc - self.origin );
-		left2 = self.origin + anglestoforward( ( 0, ang2[ 1 ] + 45, 0 ) ) * 128;
-		right2 = self.origin + anglestoforward( ( 0, ang2[ 1 ] - 45, 0 ) ) * 128;
-		lt2 = bullettrace( self.origin + ( 0, 0, 32 ), left2 + ( 0, 0, 32 ), false, self );
-		rt2 = bullettrace( self.origin + ( 0, 0, 32 ), right2 + ( 0, 0, 32 ), false, self );
-		if ( lt2[ "fraction" ] > rt2[ "fraction" ] )
-		{
-			loc = left2;
-		}
-		else
-		{
-			loc = right2;
-		}
-	}
-	
-	self SetScriptGoal( loc, 64 );
+	self SetScriptGoal( heard.origin, 64 );
 	
 	if ( self waittill_any_return( "goal", "bad_path", "new_goal" ) != "new_goal" )
 	{

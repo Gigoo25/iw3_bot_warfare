@@ -31,15 +31,14 @@ added()
 	self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] = 1; // how long a bot correct's their aim after targeting
 	self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ] = 1; // how far a bot's incorrect aim is
 	self.pers[ "bots" ][ "skill" ][ "bone_update_interval" ] = 0.05; // how often a bot changes their bone target
-	// default to center-mass heavy; head still possible
-	self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_spineupper,j_ankle_le,j_ankle_ri,j_head"; // a list of comma separated bones the bot will aim at
+	self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_head"; // a list of comma seperated bones the bot will aim at
 	self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5; // a factor of how much ads to reduce when adsing
 	self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5; // a factor of how much more aimspeed delay to add
 	
 	self.pers[ "bots" ][ "behavior" ] = [];
 	self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 50; // percentage of how often the bot strafes a target
 	self.pers[ "bots" ][ "behavior" ][ "nade" ] = 50; // percentage of how often the bot will grenade
-    self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 75; // percentage of how often the bot will sprint
+	self.pers[ "bots" ][ "behavior" ][ "sprint" ] = 50; // percentage of how often the bot will sprint
 	self.pers[ "bots" ][ "behavior" ][ "camp" ] = 50; // percentage of how often the bot will camp
 	self.pers[ "bots" ][ "behavior" ][ "follow" ] = 50; // percentage of how often the bot will follow
 	self.pers[ "bots" ][ "behavior" ][ "crouch" ] = 10; // percentage of how often the bot will crouch
@@ -49,59 +48,6 @@ added()
 	
 	self.pers[ "bots" ][ "behavior" ][ "quickscope" ] = false; // is a quickscoper
 	self.pers[ "bots" ][ "behavior" ][ "initswitch" ] = 10; // percentage of how often the bot will switch weapons on spawn
-	
-	// Combat aggression scaling parameters
-	self.pers[ "bots" ][ "behavior" ][ "combat_aggression" ] = randomintrange( 30, 90 ); // Base combat willingness (30-90%)
-	self.pers[ "bots" ][ "behavior" ][ "engagement_distance" ] = randomintrange( 500, 2000 ); // Preferred engagement range
-	self.pers[ "bots" ][ "behavior" ][ "retreat_threshold" ] = randomintrange( 20, 60 ); // Health % to retreat
-	self.pers[ "bots" ][ "behavior" ][ "pursuit_aggression" ] = randomintrange( 40, 80 ); // How aggressively to chase enemies
-	
-	// Weapon-specific behavior profiles
-	self.pers[ "bots" ][ "weapon_smg_combat_style" ] = "aggressive";
-	self.pers[ "bots" ][ "weapon_smg_preferred_range" ] = 300;
-	self.pers[ "bots" ][ "weapon_smg_movement_style" ] = "rush";
-	self.pers[ "bots" ][ "weapon_smg_cover_usage" ] = 20; // Low cover usage for SMG
-	
-	self.pers[ "bots" ][ "weapon_sniper_combat_style" ] = "tactical";
-	self.pers[ "bots" ][ "weapon_sniper_preferred_range" ] = 800;
-	self.pers[ "bots" ][ "weapon_sniper_movement_style" ] = "positional";
-	self.pers[ "bots" ][ "weapon_sniper_cover_usage" ] = 80; // High cover usage for sniper
-	
-	self.pers[ "bots" ][ "weapon_assault_combat_style" ] = "balanced";
-	self.pers[ "bots" ][ "weapon_assault_preferred_range" ] = 500;
-	self.pers[ "bots" ][ "weapon_assault_movement_style" ] = "adaptive";
-	self.pers[ "bots" ][ "weapon_assault_cover_usage" ] = 50; // Medium cover usage for assault
-	
-	self.pers[ "bots" ][ "weapon_lmg_combat_style" ] = "support";
-	self.pers[ "bots" ][ "weapon_lmg_preferred_range" ] = 600;
-	self.pers[ "bots" ][ "weapon_lmg_movement_style" ] = "suppressive";
-	self.pers[ "bots" ][ "weapon_lmg_cover_usage" ] = 70; // High cover usage for LMG
-	
-	self.pers[ "bots" ][ "weapon_shotgun_combat_style" ] = "close_combat";
-	self.pers[ "bots" ][ "weapon_shotgun_preferred_range" ] = 150;
-	self.pers[ "bots" ][ "weapon_shotgun_movement_style" ] = "rush";
-	self.pers[ "bots" ][ "weapon_shotgun_cover_usage" ] = 30; // Low cover usage for shotgun
-	
-	// Situational awareness parameters
-	self.pers[ "bots" ][ "awareness" ][ "sound_sensitivity" ] = randomintrange( 60, 90 ); // How well bot hears sounds
-	self.pers[ "bots" ][ "awareness" ][ "teammate_death_reaction" ] = randomintrange( 40, 80 ); // How much teammate deaths affect behavior
-	self.pers[ "bots" ][ "awareness" ][ "threat_assessment" ] = randomintrange( 50, 85 ); // How well bot assesses threats
-	self.pers[ "bots" ][ "awareness" ][ "positional_awareness" ] = randomintrange( 45, 85 ); // How aware of map positioning
-	self.pers[ "bots" ][ "awareness" ][ "flank_detection" ] = randomintrange( 30, 75 ); // How well bot detects flanking
-	
-	// Cover usage parameters
-	self.pers[ "bots" ][ "cover" ][ "base_usage" ] = randomintrange( 30, 70 ); // Base cover usage percentage
-	self.pers[ "bots" ][ "cover" ][ "threat_multiplier" ] = randomintrange( 120, 200 ); // How much threat increases cover usage
-	self.pers[ "bots" ][ "cover" ][ "health_threshold" ] = randomintrange( 40, 80 ); // Health % when cover becomes more important
-	self.pers[ "bots" ][ "cover" ][ "reload_cover" ] = randomintrange( 60, 90 ); // How likely to seek cover when reloading
-	self.pers[ "bots" ][ "cover" ][ "retreat_cover" ] = randomintrange( 70, 95 ); // How likely to seek cover when retreating
-	
-	// Suppressive fire parameters
-	self.pers[ "bots" ][ "suppressive" ][ "base_chance" ] = randomintrange( 20, 50 ); // Base chance to use suppressive fire
-	self.pers[ "bots" ][ "suppressive" ][ "teammate_moving_bonus" ] = randomintrange( 30, 60 ); // Bonus when teammates are moving
-	self.pers[ "bots" ][ "suppressive" ][ "ammo_threshold" ] = randomintrange( 20, 50 ); // Minimum ammo % to use suppressive fire
-	self.pers[ "bots" ][ "suppressive" ][ "max_distance" ] = randomintrange( 800, 1500 ); // Maximum distance for suppressive fire
-	self.pers[ "bots" ][ "suppressive" ][ "duration" ] = randomintrange( 2, 6 ); // How long to maintain suppressive fire
 }
 
 /*
@@ -116,21 +62,9 @@ connected()
 	self.bot_radar = false;
 	self resetBotVars();
 	
-	// initialize emotion state and listeners
-	if ( !isdefined( self.bot.emotion_anger ) )
-	{
-		self.bot.emotion_anger = 0;
-	}
-	self thread emotion_decay();
-	self thread listenKilledEnemy();
-	self thread aim_punch_decay();
-	
 	self thread onPlayerSpawned();
 	self thread bot_skip_killcam();
 	self thread onUAVUpdate();
-	self thread situationalAwareness();
-	self thread coverSeeking();
-	self thread suppressiveFire();
 }
 
 /*
@@ -167,16 +101,6 @@ doUAVUpdate()
 */
 onKilled( eInflictor, eAttacker, iDamage, sMeansOfDeath, sWeapon, vDir, sHitLoc, timeOffset, deathAnimDuration )
 {
-    // getting killed increases anger (carryover to next life)
-    if ( isdefined( eAttacker ) && isplayer( eAttacker ) )
-    {
-        if ( !level.teambased || eAttacker.team != self.team )
-        {
-            self addAnger( 0.5 );
-        }
-    }
-    // reset aim punch on death to avoid carryover jitter
-    self.bot.aim_punch = ( 0, 0, 0 );
 }
 
 /*
@@ -184,22 +108,6 @@ onKilled( eInflictor, eAttacker, iDamage, sMeansOfDeath, sWeapon, vDir, sHitLoc,
 */
 onDamage( eInflictor, eAttacker, iDamage, iDFlags, sMeansOfDeath, sWeapon, vPoint, vDir, sHitLoc, timeOffset )
 {
-    // taking damage raises anger slightly
-    if ( isdefined( eAttacker ) && isplayer( eAttacker ) )
-    {
-        if ( !level.teambased || eAttacker.team != self.team )
-        {
-            add = min( 0.35, iDamage / 200.0 );
-            if ( sHitLoc == "head" )
-            {
-                add += 0.1;
-            }
-            self addAnger( add );
-
-            // apply aim punch
-            self do_aim_punch( iDamage, sHitLoc, sMeansOfDeath );
-        }
-    }
 }
 
 /*
@@ -255,904 +163,8 @@ resetBotVars()
 	self.bot.prio_objective = false;
 	
 	self.bot.rand = randomint( 100 );
-	self.bot.last_jiggle_time = -1;
-	self.bot.aim_punch = ( 0, 0, 0 );
 	
 	self BotBuiltinBotStop();
-}
-
-// --------------------
-// Emotion and human-like modifiers
-// --------------------
-
-getAnger()
-{
-	if ( !isdefined( self.bot.emotion_anger ) )
-	{
-		return 0;
-	}
-	anger = self.bot.emotion_anger;
-	if ( anger < 0 )
-	{
-		anger = 0;
-	}
-	if ( anger > 1 )
-	{
-		anger = 1;
-	}
-	return anger;
-}
-
-addAnger( amount )
-{
-	if ( !isdefined( self.bot.emotion_anger ) )
-	{
-		self.bot.emotion_anger = 0;
-	}
-	self.bot.emotion_anger += amount;
-	if ( self.bot.emotion_anger < 0 )
-	{
-		self.bot.emotion_anger = 0;
-	}
-	if ( self.bot.emotion_anger > 1 )
-	{
-		self.bot.emotion_anger = 1;
-	}
-}
-
-emotion_decay()
-{
-	self endon( "disconnect" );
-	for ( ;; )
-	{
-		wait 0.5;
-		self addAnger( -0.02 );
-	}
-}
-
-listenKilledEnemy()
-{
-	self endon( "disconnect" );
-	for ( ;; )
-	{
-		self waittill( "killed_enemy" );
-		// calm down a bit after a kill
-		self addAnger( -0.25 );
-		
-		// Trigger immediate movement to next objective
-		self thread bot_post_kill_movement();
-	}
-}
-
-/*
-	Situational awareness system - monitors sounds, teammate deaths, and threats
-*/
-situationalAwareness()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	// Initialize awareness state
-	self.bot.awareness = [];
-	self.bot.awareness[ "last_sound_time" ] = 0;
-	self.bot.awareness[ "last_teammate_death" ] = 0;
-	self.bot.awareness[ "threat_level" ] = 0;
-	self.bot.awareness[ "flank_warning" ] = false;
-	self.bot.awareness[ "sound_direction" ] = ( 0, 0, 0 );
-	
-	for ( ;; )
-	{
-		wait 0.1;
-		
-		// Update threat assessment based on nearby enemies
-		self updateThreatAssessment();
-		
-		// Check for flanking threats
-		self checkFlankThreats();
-		
-		// Process sound cues (simplified - in real implementation would listen for actual sounds)
-		if ( randomint( 100 ) < self.pers[ "bots" ][ "awareness" ][ "sound_sensitivity" ] / 10 )
-		{
-			self processSoundCue();
-		}
-	}
-}
-
-/*
-	Update threat assessment based on nearby enemies and situation
-*/
-updateThreatAssessment()
-{
-	threatLevel = 0;
-	myPos = self.origin;
-	
-	// Check for nearby enemies
-	playercount = level.players.size;
-	for ( i = 0; i < playercount; i++ )
-	{
-		player = level.players[ i ];
-		
-		if ( !isalive( player ) || player == self )
-		{
-			continue;
-		}
-		
-		if ( level.teambased && player.team == self.team )
-		{
-			continue;
-		}
-		
-		dist = distance( myPos, player.origin );
-		
-		// Add threat based on distance and awareness
-		if ( dist < 500 )
-		{
-			threatLevel += 30;
-		}
-		else if ( dist < 1000 )
-		{
-			threatLevel += 15;
-		}
-		else if ( dist < 2000 )
-		{
-			threatLevel += 5;
-		}
-	}
-	
-	// Apply awareness modifier
-	awarenessModifier = self.pers[ "bots" ][ "awareness" ][ "threat_assessment" ] / 100.0;
-	self.bot.awareness[ "threat_level" ] = threatLevel * awarenessModifier;
-}
-
-/*
-	Check for potential flanking threats
-*/
-checkFlankThreats()
-{
-	myPos = self.origin;
-	myAngles = self getplayerangles();
-	flankWarning = false;
-	
-	// Check for enemies behind or to the sides
-	playercount = level.players.size;
-	for ( i = 0; i < playercount; i++ )
-	{
-		player = level.players[ i ];
-		
-		if ( !isalive( player ) || player == self )
-		{
-			continue;
-		}
-		
-		if ( level.teambased && player.team == self.team )
-		{
-			continue;
-		}
-		
-		dist = distance( myPos, player.origin );
-		
-		if ( dist < 800 )
-		{
-			// Calculate angle to enemy
-			dirToEnemy = player.origin - myPos;
-			angleToEnemy = vectortoangles( dirToEnemy );
-			angleDiff = abs( angleToEnemy[ 1 ] - myAngles[ 1 ] );
-			
-			// Check if enemy is behind or to the side
-			if ( angleDiff > 90 && angleDiff < 270 )
-			{
-				flankWarning = true;
-				break;
-			}
-		}
-	}
-	
-	// Apply flank detection modifier
-	flankModifier = self.pers[ "bots" ][ "awareness" ][ "flank_detection" ] / 100.0;
-	self.bot.awareness[ "flank_warning" ] = flankWarning && ( randomint( 100 ) < flankModifier * 100 );
-}
-
-/*
-	Process sound cues (simplified implementation)
-*/
-processSoundCue()
-{
-	// In a real implementation, this would listen for actual sound events
-	// For now, we'll simulate sound detection based on awareness
-	soundSensitivity = self.pers[ "bots" ][ "awareness" ][ "sound_sensitivity" ];
-	
-	if ( randomint( 100 ) < soundSensitivity / 5 )
-	{
-		self.bot.awareness[ "last_sound_time" ] = gettime();
-		
-		// Simulate sound direction (random direction for now)
-		randomAngle = randomint( 360 );
-		self.bot.awareness[ "sound_direction" ] = anglestoforward( ( 0, randomAngle, 0 ) );
-		
-		// Increase threat level temporarily
-		self.bot.awareness[ "threat_level" ] += 20;
-	}
-}
-
-/*
-	Handle teammate death reactions
-*/
-onTeammateDeath( deadPlayer )
-{
-	if ( !level.teambased )
-	{
-		return;
-	}
-	
-	teammateDeathReaction = self.pers[ "bots" ][ "awareness" ][ "teammate_death_reaction" ];
-	
-	// Record teammate death
-	self.bot.awareness[ "last_teammate_death" ] = gettime();
-	
-	// Increase threat level based on reaction sensitivity
-	threatIncrease = teammateDeathReaction / 2;
-	self.bot.awareness[ "threat_level" ] += threatIncrease;
-	
-	// Trigger defensive behavior if high reaction sensitivity
-	if ( teammateDeathReaction > 60 )
-	{
-		self thread defensiveBehavior();
-	}
-}
-
-/*
-	Cover seeking system - dynamically adjusts cover usage based on situation
-*/
-coverSeeking()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	// Initialize cover state
-	self.bot.cover = [];
-	self.bot.cover[ "seeking_cover" ] = false;
-	self.bot.cover[ "current_cover_quality" ] = 0;
-	self.bot.cover[ "last_cover_check" ] = 0;
-	
-	for ( ;; )
-	{
-		wait 0.5;
-		
-		// Update cover usage based on current situation
-		self updateCoverUsage();
-		
-		// Check if we need to seek cover
-		if ( self shouldSeekCover() )
-		{
-			self seekCover();
-		}
-	}
-}
-
-/*
-	Update cover usage based on current situation
-*/
-updateCoverUsage()
-{
-	baseCoverUsage = self.pers[ "bots" ][ "cover" ][ "base_usage" ];
-	threatMultiplier = self.pers[ "bots" ][ "cover" ][ "threat_multiplier" ] / 100.0;
-	healthThreshold = self.pers[ "bots" ][ "cover" ][ "health_threshold" ];
-	
-	// Get current health percentage
-	currentHealth = self.health;
-	maxHealth = 100; // Standard COD4 max health
-	healthPercent = ( currentHealth / maxHealth ) * 100;
-	
-	// Calculate dynamic cover usage
-	dynamicCoverUsage = baseCoverUsage;
-	
-	// Increase cover usage based on threat level
-	if ( isdefined( self.bot.awareness ) && isdefined( self.bot.awareness[ "threat_level" ] ) )
-	{
-		threatLevel = self.bot.awareness[ "threat_level" ];
-		if ( threatLevel > 30 )
-		{
-			dynamicCoverUsage *= threatMultiplier;
-		}
-	}
-	
-	// Increase cover usage when health is low
-	if ( healthPercent < healthThreshold )
-	{
-		healthModifier = ( healthThreshold - healthPercent ) / healthThreshold;
-		dynamicCoverUsage *= ( 1.0 + healthModifier );
-	}
-	
-	// Apply weapon-specific cover usage
-	if ( isdefined( self.bot.weapon_cover_usage ) )
-	{
-		weaponCoverModifier = self.bot.weapon_cover_usage / 100.0;
-		dynamicCoverUsage *= weaponCoverModifier;
-	}
-	
-	// Cap at maximum 95%
-	if ( dynamicCoverUsage > 95 )
-	{
-		dynamicCoverUsage = 95;
-	}
-	
-	// Update behavior parameters
-	self.pers[ "bots" ][ "behavior" ][ "camp" ] = dynamicCoverUsage;
-}
-
-/*
-	Suppressive fire system - provides covering fire when teammates are moving
-*/
-suppressiveFire()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	// Initialize suppressive fire state
-	self.bot.suppressive = [];
-	self.bot.suppressive[ "active" ] = false;
-	self.bot.suppressive[ "target_pos" ] = ( 0, 0, 0 );
-	self.bot.suppressive[ "start_time" ] = 0;
-	
-	for ( ;; )
-	{
-		wait 1.0;
-		
-		// Check if we should start suppressive fire
-		if ( !self.bot.suppressive[ "active" ] && self shouldUseSuppressiveFire() )
-		{
-			self startSuppressiveFire();
-		}
-		
-		// Check if we should stop suppressive fire
-		if ( self.bot.suppressive[ "active" ] && self shouldStopSuppressiveFire() )
-		{
-			self stopSuppressiveFire();
-		}
-	}
-}
-
-/*
-	Check if we should use suppressive fire
-*/
-shouldUseSuppressiveFire()
-{
-	// Check base chance
-	baseChance = self.pers[ "bots" ][ "suppressive" ][ "base_chance" ];
-	
-	// Check if we have enough ammo
-	ammoThreshold = self.pers[ "bots" ][ "suppressive" ][ "ammo_threshold" ];
-	currentAmmo = self getweaponammoclip( self getcurrentweapon() );
-	maxAmmo = weaponclipsize( self getcurrentweapon() );
-	
-	if ( maxAmmo > 0 )
-	{
-		ammoPercent = ( currentAmmo / maxAmmo ) * 100;
-		if ( ammoPercent < ammoThreshold )
-		{
-			return false;
-		}
-	}
-	
-	// Check if teammates are moving nearby
-	teammateBonus = 0;
-	playercount = level.players.size;
-	
-	for ( i = 0; i < playercount; i++ )
-	{
-		teammate = level.players[ i ];
-		if ( teammate == self || !teammate.team == self.team )
-		{
-			continue;
-		}
-		
-		// Check if teammate is moving and within range
-		distance = distance( self.origin, teammate.origin );
-		maxDistance = self.pers[ "bots" ][ "suppressive" ][ "max_distance" ];
-		
-		if ( distance < maxDistance && teammate.velocity[ 0 ] != 0 && teammate.velocity[ 1 ] != 0 )
-		{
-			teammateBonus = self.pers[ "bots" ][ "suppressive" ][ "teammate_moving_bonus" ];
-			break;
-		}
-	}
-	
-	// Calculate final chance
-	finalChance = baseChance + teammateBonus;
-	
-	return randomint( 100 ) < finalChance;
-}
-
-/*
-	Start suppressive fire
-*/
-startSuppressiveFire()
-{
-	// Find a good target position for suppressive fire
-	targetPos = self findSuppressiveFireTarget();
-	
-	if ( targetPos != ( 0, 0, 0 ) )
-	{
-		self.bot.suppressive[ "active" ] = true;
-		self.bot.suppressive[ "target_pos" ] = targetPos;
-		self.bot.suppressive[ "start_time" ] = gettime();
-		
-		// Start firing at the target position
-		self thread fireAtPosition( targetPos );
-	}
-}
-
-/*
-	Stop suppressive fire
-*/
-stopSuppressiveFire()
-{
-	self.bot.suppressive[ "active" ] = false;
-	self.bot.suppressive[ "target_pos" ] = ( 0, 0, 0 );
-	self.bot.suppressive[ "start_time" ] = 0;
-}
-
-/*
-	Check if we should stop suppressive fire
-*/
-shouldStopSuppressiveFire()
-{
-	if ( !self.bot.suppressive[ "active" ] )
-	{
-		return false;
-	}
-	
-	// Check duration
-	duration = self.pers[ "bots" ][ "suppressive" ][ "duration" ];
-	elapsed = ( gettime() - self.bot.suppressive[ "start_time" ] ) / 1000.0;
-	
-	if ( elapsed > duration )
-	{
-		return true;
-	}
-	
-	// Check if we're out of ammo
-	ammoThreshold = self.pers[ "bots" ][ "suppressive" ][ "ammo_threshold" ];
-	currentAmmo = self getweaponammoclip( self getcurrentweapon() );
-	maxAmmo = weaponclipsize( self getcurrentweapon() );
-	
-	if ( maxAmmo > 0 )
-	{
-		ammoPercent = ( currentAmmo / maxAmmo ) * 100;
-		if ( ammoPercent < ammoThreshold )
-		{
-			return true;
-		}
-	}
-	
-	return false;
-}
-
-/*
-	Find a good target position for suppressive fire
-*/
-findSuppressiveFireTarget()
-{
-	// Look for enemy positions or common enemy areas
-	playercount = level.players.size;
-	bestTarget = ( 0, 0, 0 );
-	bestScore = 0;
-	
-	for ( i = 0; i < playercount; i++ )
-	{
-		enemy = level.players[ i ];
-		if ( enemy.team == self.team )
-		{
-			continue;
-		}
-		
-		distance = distance( self.origin, enemy.origin );
-		maxDistance = self.pers[ "bots" ][ "suppressive" ][ "max_distance" ];
-		
-		if ( distance < maxDistance )
-		{
-			// Score based on distance and threat level
-			score = ( maxDistance - distance ) / maxDistance * 100;
-			if ( score > bestScore )
-			{
-				bestScore = score;
-				bestTarget = enemy.origin;
-			}
-		}
-	}
-	
-	return bestTarget;
-}
-
-/*
-	Fire at a specific position for suppressive fire
-*/
-fireAtPosition( targetPos )
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	self endon( "stop_suppressive" );
-	
-	// Aim at the target position
-	self thread bot_lookat( targetPos, 0.1 );
-	
-	// Fire in bursts
-	for ( ;; )
-	{
-		if ( !self.bot.suppressive[ "active" ] )
-		{
-			break;
-		}
-		
-		// Fire a burst
-		self thread BotPressAttack( 0.2 );
-		wait 0.5;
-	}
-}
-
-/*
-	Determine if bot should seek cover
-*/
-shouldSeekCover()
-{
-	// Check if we're already seeking cover
-	if ( self.bot.cover[ "seeking_cover" ] )
-	{
-		return false;
-	}
-	
-	// Check health-based cover seeking
-	healthThreshold = self.pers[ "bots" ][ "cover" ][ "health_threshold" ];
-	currentHealth = self.health;
-	maxHealth = 100; // Standard COD4 max health
-	healthPercent = ( currentHealth / maxHealth ) * 100;
-	
-	if ( healthPercent < healthThreshold )
-	{
-		return true;
-	}
-	
-	// Check threat-based cover seeking
-	if ( isdefined( self.bot.awareness ) && isdefined( self.bot.awareness[ "threat_level" ] ) )
-	{
-		threatLevel = self.bot.awareness[ "threat_level" ];
-		if ( threatLevel > 60 )
-		{
-			return true;
-		}
-	}
-	
-	// Check if we're reloading
-	if ( self.bot.isreloading )
-	{
-		reloadCoverChance = self.pers[ "bots" ][ "cover" ][ "reload_cover" ];
-		if ( randomint( 100 ) < reloadCoverChance )
-		{
-			return true;
-		}
-	}
-	
-	// Check if we're retreating
-	if ( isdefined( self.bot.retreating ) && self.bot.retreating )
-	{
-		retreatCoverChance = self.pers[ "bots" ][ "cover" ][ "retreat_cover" ];
-		if ( randomint( 100 ) < retreatCoverChance )
-		{
-			return true;
-		}
-	}
-	
-	return false;
-}
-
-/*
-	Seek cover based on current situation
-*/
-seekCover()
-{
-	self.bot.cover[ "seeking_cover" ] = true;
-	
-	// Find nearby cover positions (simplified - would use actual map cover data)
-	myPos = self.origin;
-	bestCoverPos = undefined;
-	bestCoverQuality = 0;
-	
-	// Simulate finding cover positions
-	for ( i = 0; i < 5; i++ )
-	{
-		// Generate random cover position within reasonable distance
-		randomAngle = randomint( 360 );
-		randomDistance = randomintrange( 100, 300 );
-		coverPos = myPos + anglestoforward( ( 0, randomAngle, 0 ) ) * randomDistance;
-		
-		// Calculate cover quality based on distance from threats
-		coverQuality = self calculateCoverQuality( coverPos );
-		
-		if ( coverQuality > bestCoverQuality )
-		{
-			bestCoverQuality = coverQuality;
-			bestCoverPos = coverPos;
-		}
-	}
-	
-	// Move to cover if we found a good position
-	if ( isdefined( bestCoverPos ) && bestCoverQuality > 30 )
-	{
-		self.bot.cover[ "current_cover_quality" ] = bestCoverQuality;
-		self.bot.cover[ "last_cover_check" ] = gettime();
-		
-		// Set movement goal to cover position
-		self movetowards( bestCoverPos );
-		
-		// Wait a bit before allowing new cover seeking
-		wait 3.0;
-	}
-	
-	self.bot.cover[ "seeking_cover" ] = false;
-}
-
-/*
-	Calculate cover quality for a position
-*/
-calculateCoverQuality( position )
-{
-	quality = 50; // Base quality
-	
-	// Check distance from current position
-	myPos = self.origin;
-	distanceFromMe = distance( myPos, position );
-	
-	// Prefer closer cover
-	if ( distanceFromMe < 200 )
-	{
-		quality += 20;
-	}
-	else if ( distanceFromMe > 500 )
-	{
-		quality -= 20;
-	}
-	
-	// Check distance from threats
-	playercount = level.players.size;
-	for ( i = 0; i < playercount; i++ )
-	{
-		player = level.players[ i ];
-		
-		if ( !isalive( player ) || player == self )
-		{
-			continue;
-		}
-		
-		if ( level.teambased && player.team == self.team )
-		{
-			continue;
-		}
-		
-		threatDistance = distance( position, player.origin );
-		
-		// Prefer cover that's far from threats
-		if ( threatDistance > 400 )
-		{
-			quality += 15;
-		}
-		else if ( threatDistance < 200 )
-		{
-			quality -= 30;
-		}
-	}
-	
-	return quality;
-}
-
-/*
-	Defensive behavior triggered by high threat or teammate deaths
-*/
-defensiveBehavior()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	// Increase cover usage temporarily
-	originalCoverUsage = self.pers[ "bots" ][ "behavior" ][ "camp" ];
-	self.pers[ "bots" ][ "behavior" ][ "camp" ] = min( 90, originalCoverUsage + 30 );
-	
-	// Wait for threat to decrease
-	wait 5.0;
-	
-	// Restore original behavior
-	self.pers[ "bots" ][ "behavior" ][ "camp" ] = originalCoverUsage;
-}
-
-/*
-	Get weapon-specific behavior parameters based on current weapon
-*/
-getWeaponBehaviorParams()
-{
-	curweap = self getcurrentweapon();
-	weaponClass = weaponclass( curweap );
-	
-	// Default values
-	combatStyle = "balanced";
-	preferredRange = 500;
-	movementStyle = "adaptive";
-	coverUsage = 50;
-	
-	// Apply weapon-specific behavior based on weapon class
-	switch ( weaponClass )
-	{
-		case "weapon_smg":
-			combatStyle = self.pers[ "bots" ][ "weapon_smg_combat_style" ];
-			preferredRange = self.pers[ "bots" ][ "weapon_smg_preferred_range" ];
-			movementStyle = self.pers[ "bots" ][ "weapon_smg_movement_style" ];
-			coverUsage = self.pers[ "bots" ][ "weapon_smg_cover_usage" ];
-			break;
-			
-		case "weapon_sniper":
-			combatStyle = self.pers[ "bots" ][ "weapon_sniper_combat_style" ];
-			preferredRange = self.pers[ "bots" ][ "weapon_sniper_preferred_range" ];
-			movementStyle = self.pers[ "bots" ][ "weapon_sniper_movement_style" ];
-			coverUsage = self.pers[ "bots" ][ "weapon_sniper_cover_usage" ];
-			break;
-			
-		case "weapon_assault":
-			combatStyle = self.pers[ "bots" ][ "weapon_assault_combat_style" ];
-			preferredRange = self.pers[ "bots" ][ "weapon_assault_preferred_range" ];
-			movementStyle = self.pers[ "bots" ][ "weapon_assault_movement_style" ];
-			coverUsage = self.pers[ "bots" ][ "weapon_assault_cover_usage" ];
-			break;
-			
-		case "weapon_lmg":
-			combatStyle = self.pers[ "bots" ][ "weapon_lmg_combat_style" ];
-			preferredRange = self.pers[ "bots" ][ "weapon_lmg_preferred_range" ];
-			movementStyle = self.pers[ "bots" ][ "weapon_lmg_movement_style" ];
-			coverUsage = self.pers[ "bots" ][ "weapon_lmg_cover_usage" ];
-			break;
-			
-		case "weapon_shotgun":
-			combatStyle = self.pers[ "bots" ][ "weapon_shotgun_combat_style" ];
-			preferredRange = self.pers[ "bots" ][ "weapon_shotgun_preferred_range" ];
-			movementStyle = self.pers[ "bots" ][ "weapon_shotgun_movement_style" ];
-			coverUsage = self.pers[ "bots" ][ "weapon_shotgun_cover_usage" ];
-			break;
-	}
-	
-	// Store parameters in bot struct for access
-	self.bot.weapon_combat_style = combatStyle;
-	self.bot.weapon_preferred_range = preferredRange;
-	self.bot.weapon_movement_style = movementStyle;
-	self.bot.weapon_cover_usage = coverUsage;
-	
-	// Return preferred range for compatibility
-	return preferredRange;
-}
-
-getHumanAimJitter( obj, adsAmount )
-{
-	// Compute additional human-like jitter based on distance, movement, stance, ADS, and emotion
-	if ( !isdefined( obj ) )
-	{
-		return ( 0, 0, 0 );
-	}
-	
-	// distance factors (work in squared space to avoid sqrt)
-	distCloseRaw = self.pers[ "bots" ][ "skill" ][ "dist_start" ] * self.bot.cur_weap_dist_multi;
-	distMaxRaw = self.pers[ "bots" ][ "skill" ][ "dist_max" ] * self.bot.cur_weap_dist_multi;
-	distCloseSq = distCloseRaw * distCloseRaw;
-	distMaxSq = distMaxRaw * distMaxRaw;
-	farFrac = 0;
-	if ( distMaxSq > distCloseSq )
-	{
-		farFrac = ( obj.dist - distCloseSq ) / ( distMaxSq - distCloseSq );
-		if ( farFrac < 0 )
-		{
-			farFrac = 0;
-		}
-		if ( farFrac > 1 )
-		{
-			farFrac = 1;
-		}
-	}
-	
-	// base from difficulty, always have a little jitter even for perfect aim
-	base = self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ];
-	if ( base < 0.1 )
-	{
-		base = 0.1;
-	}
-	
-	// stance and movement
-	stance = self getstance();
-	mulStance = 1;
-	if ( stance == "crouch" )
-	{
-		mulStance = 0.7;
-	}
-	else if ( stance == "prone" )
-	{
-		mulStance = 0.5;
-	}
-	
-	mulADS = 1 - ( adsAmount * 0.6 );
-	
-	velLenSq = lengthsquared( self getvelocity() );
-	mulMove = 1;
-	if ( velLenSq > 4000 )
-	{
-		mulMove = 1.25;
-	}
-	if ( self.bot.issprinting )
-	{
-		mulMove = 1.5;
-	}
-	
-	anger = self getAnger();
-	mulAnger = 1 + ( 0.8 * anger );
-	
-	amplitude = base * ( 0.25 + 0.75 * farFrac ) * mulStance * mulADS * mulMove * mulAnger;
-	
-	// smooth jitter using time-based oscillation with per-target phase
-	if ( !isdefined( obj.jitter_phase ) )
-	{
-		obj.jitter_phase = ( randomfloatrange( 0, 360 ), randomfloatrange( 0, 360 ), randomfloatrange( 0, 360 ) );
-	}
-	
-	t = gettime() * 0.005; // slow varying
-	px = obj.jitter_phase[ 0 ];
-	py = obj.jitter_phase[ 1 ];
-	pz = obj.jitter_phase[ 2 ];
-	// use degrees-based trig consistent with other code
-	jx = sin( t + px ) * amplitude;
-	jy = cos( t * 0.9 + py ) * amplitude;
-	jz = sin( t * 1.1 + pz ) * amplitude * 0.6; // less vertical sway
-	
-	return ( jx, jy, jz );
-}
-
-// Aim punch (view kick) when damaged
-do_aim_punch( dmg, hitLoc, mod )
-{
-	// scale based on damage and hit location
-	mag = dmg * 0.002;
-	if ( hitLoc == "head" )
-	{
-		mag += 0.25;
-	}
-	if ( mod == "MOD_EXPLOSIVE" )
-	{
-		mag += 0.15;
-	}
-	if ( mag > 0.6 )
-	{
-		mag = 0.6;
-	}
-	// random direction bias, more vertical than horizontal
-	upKick = mag * ( 0.5 + randomfloatrange( 0, 0.5 ) );
-	sideKick = mag * randomfloatrange( -0.5, 0.5 );
-	// accumulate
-	ap = self.bot.aim_punch;
-	ap = ( ap[ 0 ] + ( upKick * 20 ), ap[ 1 ] + ( sideKick * 20 ), 0 );
-	self.bot.aim_punch = ap;
-}
-
-aim_punch_decay()
-{
-	self endon( "disconnect" );
-	for ( ;; )
-	{
-		wait 0.05;
-		ap = self.bot.aim_punch;
-		// exponential-style decay
-		ap = ( ap[ 0 ] * 0.8, ap[ 1 ] * 0.8, 0 );
-		if ( abs( ap[ 0 ] ) < 0.01 )
-		{
-			ap = ( 0, ap[ 1 ], 0 );
-		}
-		if ( abs( ap[ 1 ] ) < 0.01 )
-		{
-			ap = ( ap[ 0 ], 0, 0 );
-		}
-		self.bot.aim_punch = ap;
-	}
 }
 
 /*
@@ -1218,7 +230,6 @@ spawned()
 	self thread doBotMovement();
 	self thread watchGrenadeFire();
 	self thread watchPickupGun();
-	self thread anti_idle();
 	
 	self notify( "bot_spawned" );
 }
@@ -1599,7 +610,7 @@ reload_watch_loop()
 	{
 		ret = self waittill_any_timeout( 7.5, "reload" );
 		
-        if ( ret == "timeout" )
+		if ( ret == "timeout" )
 		{
 			break;
 		}
@@ -1611,7 +622,7 @@ reload_watch_loop()
 			break;
 		}
 		
-        if ( self getweaponammoclip( weap ) >= weaponclipsize( weap ) )
+		if ( self getweaponammoclip( weap ) >= weaponclipsize( weap ) )
 		{
 			break;
 		}
@@ -1632,22 +643,7 @@ reload_watch()
 	{
 		self waittill( "reload_start" );
 		
-        self reload_watch_loop();
-        // reload cancel under fire: if we took damage recently and mag still has bullets, cancel and re-engage
-        if ( self.bot.isreloading )
-        {
-            continue;
-        }
-        weap2 = self getcurrentweapon();
-        if ( weap2 != "none" && self getweaponammoclip( weap2 ) > 0 && isdefined( self.lastattacker ) )
-        {
-            if ( randomint( 100 ) < 75 )
-            {
-                // slight delay to simulate human cancel timing
-                wait randomfloatrange( 0, 0.08 );
-                self notify( "bot_reload" );
-            }
-        }
+		self reload_watch_loop();
 	}
 }
 
@@ -1691,7 +687,7 @@ stance_loop()
 		toStance = "crouch";
 	}
 	
-    if ( toStance == "stand" )
+	if ( toStance == "stand" )
 	{
 		self stand();
 	}
@@ -1706,9 +702,7 @@ stance_loop()
 	
 	curweap = self getcurrentweapon();
 	time = gettime();
-    chance = self.pers[ "bots" ][ "behavior" ][ "sprint" ];
-    // impatience: increase sprinting chance when angry
-    chance = int( chance * ( 1 + 0.5 * self getAnger() ) );
+	chance = self.pers[ "bots" ][ "behavior" ][ "sprint" ];
 	
 	if ( time - self.lastspawntime < 5000 )
 	{
@@ -1720,8 +714,7 @@ stance_loop()
 		chance *= 2;
 	}
 	
-    // allow sprint in crouch but not prone; still block if busy
-    if ( toStance == "prone" || self.bot.isreloading || self.bot.issprinting || self.bot.isfraggingafter || self.bot.issmokingafter )
+	if ( toStance != "stand" || self.bot.isreloading || self.bot.issprinting || self.bot.isfraggingafter || self.bot.issmokingafter )
 	{
 		return;
 	}
@@ -1731,14 +724,9 @@ stance_loop()
 		return;
 	}
 	
-    if ( isdefined( self.bot.target ) && self canFire( curweap ) && self isInRange( self.bot.target.dist, curweap ) )
+	if ( isdefined( self.bot.target ) && self canFire( curweap ) && self isInRange( self.bot.target.dist, curweap ) )
 	{
-        // still allow sprint if far from target to close the gap
-        distTo = self.bot.target.dist;
-        if ( distTo < level.bots_noadsdistance * level.bots_noadsdistance )
-        {
-            return;
-        }
+		return;
 	}
 	
 	if ( self.bot.sprintendtime != -1 && time - self.bot.sprintendtime < 2000 )
@@ -1746,8 +734,7 @@ stance_loop()
 		return;
 	}
 	
-    // allow more sprinting, relax cone dot threshold a bit for human impatience
-    if ( !isdefined( self.bot.towards_goal ) || distancesquared( self.origin, physicstrace( self getEyePos(), self getEyePos() + anglestoforward( self getplayerangles() ) * 1024, false, undefined ) ) < level.bots_minsprintdistance || getConeDot( self.bot.towards_goal, self.origin, self getplayerangles() ) < 0.6 )
+	if ( !isdefined( self.bot.towards_goal ) || distancesquared( self.origin, physicstrace( self getEyePos(), self getEyePos() + anglestoforward( self getplayerangles() ) * 1024, false, undefined ) ) < level.bots_minsprintdistance || getConeDot( self.bot.towards_goal, self.origin, self getplayerangles() ) < 0.75 )
 	{
 		return;
 	}
@@ -1822,12 +809,7 @@ grenade_danger()
 			continue;
 		}
 		
-        self thread watch_grenade( grenade );
-        // evasive step even if we can't throw it back
-        if ( randomint( 100 ) < 65 )
-        {
-            self thread micro_jiggle_movement();
-        }
+		self thread watch_grenade( grenade );
 	}
 }
 
@@ -1885,11 +867,6 @@ check_reload()
 	for ( ;; )
 	{
 		self waittill_notify_or_timeout( "weapon_fired", 5 );
-		// sometimes make a poor reload decision under pressure
-		if ( randomint( 100 ) < 12 )
-		{
-			self thread bad_reload_decision();
-		}
 		self thread reload_thread();
 	}
 }
@@ -1928,50 +905,6 @@ reload_thread()
 	if ( cursize / maxsize < 0.5 )
 	{
 		self thread reload();
-	}
-}
-
-// Occasionally reload at a bad time (human mistake)
-bad_reload_decision()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	// Only trigger if enemy is near/visible-ish and we still have some ammo
-	if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
-	{
-		return;
-	}
-	
-	cur = self getcurrentweapon();
-	if ( cur == "" || cur == "none" )
-	{
-		return;
-	}
-	
-	if ( isweaponcliponly( cur ) )
-	{
-		return;
-	}
-	
-	if ( !self getweaponammostock( cur ) )
-	{
-		return;
-	}
-	
-	// has ammo in mag, but not empty
-	if ( self getweaponammoclip( cur ) <= int( weaponclipsize( cur ) * 0.25 ) )
-	{
-		return;
-	}
-	
-	// close target or recently seen
-	if ( self.bot.target.trace_time < 200 || self.bot.target.dist < ( 800 * 800 ) )
-	{
-		if ( randomint( 100 ) < 35 + int( 30 * self getAnger() ) )
-		{
-			self thread reload();
-		}
 	}
 }
 
@@ -2046,7 +979,7 @@ updateAimOffset( obj )
 		}
 	}
 	
-    aimDiffTime = self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] * 1000;
+	aimDiffTime = self.pers[ "bots" ][ "skill" ][ "aim_offset_time" ] * 1000;
 	objCreatedFor = obj.trace_time;
 	
 	if ( objCreatedFor >= aimDiffTime )
@@ -2058,9 +991,7 @@ updateAimOffset( obj )
 		offsetScalar = 1 - objCreatedFor / aimDiffTime;
 	}
 	
-    // Add small random per-target jitter to reduce perfect head tap potential
-    randJit = ( randomfloatrange( -0.12, 0.12 ), randomfloatrange( -0.12, 0.12 ), 0 );
-    obj.aim_offset = ( obj.aim_offset_base[ 0 ] * offsetScalar + randJit[ 0 ], obj.aim_offset_base[ 1 ] * offsetScalar + randJit[ 1 ], obj.aim_offset_base[ 2 ] * offsetScalar + randJit[ 2 ] );
+	obj.aim_offset = obj.aim_offset_base * offsetScalar;
 }
 
 /*
@@ -2316,98 +1247,16 @@ target_loop()
 	
 	bestKeys = getarraykeys( bestTargets );
 	
-	// Combat aggression scaling: more aggressive bots prefer closer targets
-	combatAggression = self.pers[ "bots" ][ "behavior" ][ "combat_aggression" ];
-	engagementDistance = self.pers[ "bots" ][ "behavior" ][ "engagement_distance" ];
-	
-	// Get weapon-specific behavior parameters
-	self getWeaponBehaviorParams();
-	weaponCombatStyle = self.bot.weapon_combat_style;
-	weaponPreferredRange = self.bot.weapon_preferred_range;
-	weaponMovementStyle = self.bot.weapon_movement_style;
-	weaponCoverUsage = self.bot.weapon_cover_usage;
-	
 	for ( i = bestKeys.size - 1; i >= 0; i-- )
 	{
 		theDist = bestTargets[ bestKeys[ i ] ].dist;
 		
-		// Apply combat aggression scaling to target selection
-		// More aggressive bots (higher combat_aggression) prefer closer targets
-		// Less aggressive bots (lower combat_aggression) are more willing to engage distant targets
-		aggressionModifier = ( 100 - combatAggression ) / 100.0; // 0.1 to 0.7
-		effectiveDistance = theDist * ( 1.0 + aggressionModifier );
-		
-		// Apply weapon-specific behavior modifications
-		weaponRangeModifier = 1.0;
-		if ( theDist > weaponPreferredRange * weaponPreferredRange )
-		{
-			// Apply penalty for targets outside weapon's preferred range
-			weaponRangeModifier = 1.5;
-		}
-		else if ( theDist < weaponPreferredRange * weaponPreferredRange * 0.25 )
-		{
-			// Apply penalty for targets too close for weapon's optimal range
-			weaponRangeModifier = 1.3;
-		}
-		
-		// Apply weapon-specific combat style modifiers
-		combatStyleModifier = 1.0;
-		switch ( weaponCombatStyle )
-		{
-			case "aggressive":
-				// Aggressive weapons prefer closer targets
-				combatStyleModifier = 0.8;
-				break;
-			case "tactical":
-				// Tactical weapons prefer medium-range targets
-				combatStyleModifier = 1.2;
-				break;
-			case "support":
-				// Support weapons are more flexible with range
-				combatStyleModifier = 1.0;
-				break;
-			case "close_combat":
-				// Close combat weapons heavily prefer very close targets
-				combatStyleModifier = 0.6;
-				break;
-		}
-		
-		effectiveDistance *= weaponRangeModifier * combatStyleModifier;
-		
-		// Apply situational awareness modifiers
-		awarenessModifier = 1.0;
-		
-		// High threat level makes bots more cautious about distant targets
-		if ( isdefined( self.bot.awareness ) && isdefined( self.bot.awareness[ "threat_level" ] ) )
-		{
-			threatLevel = self.bot.awareness[ "threat_level" ];
-			if ( threatLevel > 50 )
-			{
-				awarenessModifier *= 1.3; // More cautious under high threat
-			}
-		}
-		
-		// Flank warning makes bots prefer closer targets
-		if ( isdefined( self.bot.awareness ) && isdefined( self.bot.awareness[ "flank_warning" ] ) && self.bot.awareness[ "flank_warning" ] )
-		{
-			awarenessModifier *= 1.5; // Much more cautious when flanked
-		}
-		
-		effectiveDistance *= awarenessModifier;
-		
-		// Check if target is within preferred engagement distance
-		if ( theDist > engagementDistance * engagementDistance )
-		{
-			// For distant targets, apply additional penalty based on aggression
-			effectiveDistance *= ( 1.0 + ( 100 - combatAggression ) / 50.0 );
-		}
-		
-		if ( effectiveDistance > closest )
+		if ( theDist > closest )
 		{
 			continue;
 		}
 		
-		closest = effectiveDistance;
+		closest = theDist;
 		toBeTarget = bestTargets[ bestKeys[ i ] ];
 	}
 	
@@ -2556,10 +1405,7 @@ watchToLook()
 			continue;
 		}
 		
-        // impatience/anger: more strafing when angry
-        strafeChance = self.pers[ "bots" ][ "behavior" ][ "strafe" ];
-        strafeChance = int( strafeChance * ( 1 + 0.4 * self getAnger() ) );
-        if ( self.bot.target.rand <= strafeChance )
+		if ( self.bot.target.rand <= self.pers[ "bots" ][ "behavior" ][ "strafe" ] )
 		{
 			if ( self getstance() != "stand" )
 			{
@@ -2599,112 +1445,9 @@ start_bot_after_target( who )
 	self notify( "kill_after_target" );
 	self endon( "kill_after_target" );
 	
-	// Reduced post-kill delay for more dynamic movement
-	wait self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ] * 0.3;
+	wait self.pers[ "bots" ][ "skill" ][ "shoot_after_time" ];
 	
-	// Immediately start moving to next objective after kill
-	self thread bot_post_kill_movement();
-	
-	// Clear the after target
 	self.bot.after_target = undefined;
-}
-
-/*
-	Makes the bot move to the next objective immediately after a kill
-*/
-bot_post_kill_movement()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	// Small delay to prevent immediate movement (feels more natural)
-	wait 0.1;
-	
-	// If bot has no current target, find a new objective
-	if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
-	{
-		// Trigger target acquisition with aggression boost
-		self thread bot_post_kill_target_aggression();
-		self notify( "need_new_target" );
-		
-		// If still no target after a moment, move to a random waypoint
-		wait 0.5;
-		if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
-		{
-			self thread bot_move_to_random_objective();
-		}
-	}
-	else
-	{
-		// Even if we have a target, start moving to improve positioning
-		self thread bot_post_kill_target_aggression();
-	}
-}
-
-/*
-	Moves the bot to a random objective/waypoint when no target is available
-*/
-bot_move_to_random_objective()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	// Get all available waypoints
-	waypoints = getWaypointsOfType( "node" );
-	if ( isdefined( waypoints ) && waypoints.size > 0 )
-	{
-		// Pick a random waypoint that's not too close to current position
-		attempts = 0;
-		max_attempts = 10;
-		
-		while ( attempts < max_attempts )
-		{
-			random_index = randomint( waypoints.size );
-			random_wp = getWaypointForIndex( waypoints[ random_index ] );
-			
-			if ( isdefined( random_wp ) )
-			{
-				dist = distance( self.origin, random_wp.origin );
-				// Choose waypoint that's at least 200 units away
-				if ( dist > 200 )
-				{
-					// Set as movement goal
-					self SetScriptGoal( random_wp.origin, 32 );
-					
-					// Wait for goal completion or timeout
-					wait 3;
-					self ClearScriptGoal();
-					break;
-				}
-			}
-			attempts++;
-			wait 0.1;
-		}
-	}
-}
-
-/*
-	Makes bots more aggressive about finding new targets after kills
-*/
-bot_post_kill_target_aggression()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	// Temporarily increase FOV and reduce reaction time to find targets faster
-	original_fov = self.pers[ "bots" ][ "skill" ][ "fov" ];
-	original_reaction = self.pers[ "bots" ][ "skill" ][ "reaction_time" ];
-	
-	// Boost target acquisition for a short time
-	self.pers[ "bots" ][ "skill" ][ "fov" ] *= 1.3;
-	self.pers[ "bots" ][ "skill" ][ "reaction_time" ] *= 0.7;
-	
-	// Wait for the boost period
-	wait 2.0;
-	
-	// Restore original values
-	self.pers[ "bots" ][ "skill" ][ "fov" ] = original_fov;
-	self.pers[ "bots" ][ "skill" ][ "reaction_time" ] = original_reaction;
 }
 
 /*
@@ -2796,7 +1539,7 @@ aim_loop()
 				}
 			}
 			
-            if ( no_trace_time && ( !isdefined( self.bot.after_target ) || self.bot.after_target != target ) )
+			if ( no_trace_time && ( !isdefined( self.bot.after_target ) || self.bot.after_target != target ) )
 			{
 				if ( no_trace_time > no_trace_ads_time )
 				{
@@ -2833,13 +1576,7 @@ aim_loop()
 						}
 					}
 				}
-                // don't stand still while watching last known position
-                self thread micro_jiggle_movement();
-                // if LOS to last known is blocked for a bit, try to step for a better angle
-                if ( no_trace_time > 600 )
-                {
-                    self thread seek_better_angle( last_pos );
-                }
+				
 				self thread bot_lookat( last_pos + ( 0, 0, self getEyeHeight() + nadeAimOffset ), aimspeed );
 				return;
 			}
@@ -2860,10 +1597,8 @@ aim_loop()
 						return;
 					}
 					
-                    aimpos += offset;
-                    aimpos += aimoffset;
-                    // add human-like jitter
-                    aimpos += self getHumanAimJitter( self.bot.target, adsAmount );
+					aimpos += offset;
+					aimpos += aimoffset;
 					aimpos += ( 0, 0, nadeAimOffset );
 					
 					conedot = getConeDot( aimpos, eyePos, angles );
@@ -2872,51 +1607,31 @@ aim_loop()
 					{
 						self thread bot_lookat( target gettagorigin( "j_spine4" ), 0.05 );
 					}
-                    else if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
+					else if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
 					{
 						self thread bot_lookat( aimpos, 0.05 );
 					}
 					else
 					{
-                        // micro-peek: occasionally aim a hair off to simulate wrong-side peek
-                        if ( randomint( 100 ) < 10 )
-                        {
-                            wrongSide = -1;
-                            if ( randomint( 100 ) < 50 )
-                            {
-                                wrongSide = 1;
-                            }
-                            aimpos += ( 6 * wrongSide, 0, 0 );
-                        }
-                        self thread bot_lookat( aimpos, aimspeed, target getvelocity(), true );
+						self thread bot_lookat( aimpos, aimspeed, target getvelocity(), true );
 					}
 				}
 				else
 				{
-                    aimpos = target.origin;
-                    aimpos += offset;
-                    aimpos += aimoffset;
-                    aimpos += self getHumanAimJitter( self.bot.target, adsAmount );
+					aimpos = target.origin;
+					aimpos += offset;
+					aimpos += aimoffset;
 					aimpos += ( 0, 0, nadeAimOffset );
 					
 					conedot = getConeDot( aimpos, eyePos, angles );
 					
-                    if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
+					if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
 					{
 						self thread bot_lookat( aimpos, 0.05 );
 					}
 					else
 					{
-                        if ( randomint( 100 ) < 10 )
-                        {
-                            wrongSide2 = -1;
-                            if ( randomint( 100 ) < 50 )
-                            {
-                                wrongSide2 = 1;
-                            }
-                            aimpos += ( 6 * wrongSide2, 0, 0 );
-                        }
-                        self thread bot_lookat( aimpos, aimspeed );
+						self thread bot_lookat( aimpos, aimspeed );
 					}
 				}
 				
@@ -2938,7 +1653,7 @@ aim_loop()
 				{
 					stopAdsOverride = false;
 					
-                    if ( self.bot.is_cur_sniper )
+					if ( self.bot.is_cur_sniper )
 					{
 						if ( self.pers[ "bots" ][ "behavior" ][ "quickscope" ] && self.bot.last_fire_time != -1 && gettime() - self.bot.last_fire_time < 1000 )
 						{
@@ -2950,37 +1665,15 @@ aim_loop()
 						}
 					}
 					
-                    if ( !stopAdsOverride )
+					if ( !stopAdsOverride )
 					{
-                        // apply small latency jitter to ADS timing
-                        self thread pressADS( 0.05 + randomfloatrange( 0, 0.08 ) );
+						self thread pressADS();
 					}
 				}
 				
-                if ( trace_time > reaction_time )
+				if ( trace_time > reaction_time )
 				{
-                    // add small jiggle during active gunfight to avoid being static
-                    if ( randomint( 100 ) < 65 )
-                    {
-                        self thread micro_jiggle_movement();
-                    }
-                    // dynamic fire threshold based on distance and emotion
-                    distClose_fire = self.pers[ "bots" ][ "skill" ][ "dist_start" ] * self.bot.cur_weap_dist_multi;
-                    distMax_fire = self.pers[ "bots" ][ "skill" ][ "dist_max" ] * self.bot.cur_weap_dist_multi;
-                    linDist_fire = sqrt( max( 0, dist ) );
-                    farFrac_fire = 0;
-                    if ( distMax_fire > distClose_fire )
-                    {
-                        farFrac_fire = max( 0, min( 1, ( linDist_fire - distClose_fire ) / ( distMax_fire - distClose_fire ) ) );
-                    }
-                    anger_fire = self getAnger();
-                    fireThr = 0.985 + 0.02 * farFrac_fire - 0.03 * anger_fire;
-                    if ( fireThr < 0.94 ) fireThr = 0.94;
-                    if ( fireThr > 0.995 ) fireThr = 0.995;
-
-                    earlyShoot = ( anger_fire > randomfloatrange( 0, 1 ) );
-
-                    if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > fireThr || ( earlyShoot && conedot > fireThr - 0.02 ) || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
+					if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > 0.99 || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
 					{
 						self botFire();
 					}
@@ -3021,9 +1714,7 @@ aim_loop()
 		aimpos = last_pos + ( 0, 0, self getEyeHeight() + nadeAimOffset );
 		conedot = getConeDot( aimpos, eyePos, angles );
 		
-        // avoid standing still while keeping after-target
-        self thread micro_jiggle_movement();
-        self thread bot_lookat( aimpos, aimspeed );
+		self thread bot_lookat( aimpos, aimspeed );
 		
 		if ( !self canFire( curweap ) || !self isInRange( dist, curweap ) )
 		{
@@ -3054,21 +1745,7 @@ aim_loop()
 			}
 		}
 		
-        // dynamic fire threshold for after-target shooting
-        distClose_fire2 = self.pers[ "bots" ][ "skill" ][ "dist_start" ] * self.bot.cur_weap_dist_multi;
-        distMax_fire2 = self.pers[ "bots" ][ "skill" ][ "dist_max" ] * self.bot.cur_weap_dist_multi;
-        linDist_fire2 = sqrt( max( 0, dist ) );
-        farFrac_fire2 = 0;
-        if ( distMax_fire2 > distClose_fire2 )
-        {
-            farFrac_fire2 = max( 0, min( 1, ( linDist_fire2 - distClose_fire2 ) / ( distMax_fire2 - distClose_fire2 ) ) );
-        }
-        anger_fire2 = self getAnger();
-        fireThr2 = 0.97 + 0.02 * farFrac_fire2 - 0.03 * anger_fire2;
-        if ( fireThr2 < 0.92 ) fireThr2 = 0.92;
-        if ( fireThr2 > 0.99 ) fireThr2 = 0.99;
-
-        if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > fireThr2 || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
+		if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > 0.95 || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
 		{
 			self botFire();
 		}
@@ -3135,18 +1812,10 @@ botFire()
 {
 	self.bot.last_fire_time = gettime();
 	
-    if ( self.bot.is_cur_full_auto )
+	if ( self.bot.is_cur_full_auto )
 	{
-        // human-like: latency jitter + burst control
-        jitter = randomfloatrange( 0.04, 0.12 );
-        anger_fire = self getAnger();
-        if ( anger_fire > randomfloatrange( 0, 1 ) )
-        {
-            jitter *= 0.6; // quicker trigger when angry
-        }
-        burstLen = jitter;
-        self thread pressFire( burstLen );
-        return;
+		self thread pressFire();
+		return;
 	}
 	
 	if ( self.bot.semi_time )
@@ -3169,8 +1838,7 @@ doSemiTime()
 	self endon( "bot_semi_time" );
 	
 	self.bot.semi_time = true;
-    // latency jitter for semi-auto
-    wait self.pers[ "bots" ][ "skill" ][ "semi_time" ] + randomfloatrange( -0.03, 0.06 );
+	wait self.pers[ "bots" ][ "skill" ][ "semi_time" ];
 	self.bot.semi_time = false;
 }
 
@@ -3285,28 +1953,22 @@ walk_loop()
 	{
 		curweap = self getcurrentweapon();
 		
-        if ( self.bot.target.entity.classname == "script_vehicle" || self.bot.isfraggingafter || self.bot.issmokingafter )
+		if ( self.bot.target.entity.classname == "script_vehicle" || self.bot.isfraggingafter || self.bot.issmokingafter )
 		{
 			return;
 		}
 		
-        if ( isplayer( self.bot.target.entity ) && self.bot.target.trace_time && self canFire( curweap ) && self isInRange( self.bot.target.dist, curweap ) )
+		if ( isplayer( self.bot.target.entity ) && self.bot.target.trace_time && self canFire( curweap ) && self isInRange( self.bot.target.dist, curweap ) )
 		{
 			if ( self inLastStand() || self getstance() == "prone" || ( self.bot.is_cur_sniper && self playerads() > 0 ) )
 			{
 				return;
 			}
 			
-            // micro-movement jiggle to avoid standing still
-            self thread micro_jiggle_movement();
-            
-            // impatience/anger: more strafing when angry
-            strafeChance2 = self.pers[ "bots" ][ "behavior" ][ "strafe" ];
-            strafeChance2 = int( strafeChance2 * ( 1 + 0.4 * self getAnger() ) );
-            if ( self.bot.target.rand <= strafeChance2 )
-            {
-                self strafe( self.bot.target.entity );
-            }
+			if ( self.bot.target.rand <= self.pers[ "bots" ][ "behavior" ][ "strafe" ] )
+			{
+				self strafe( self.bot.target.entity );
+			}
 			
 			return;
 		}
@@ -3375,205 +2037,10 @@ walk_loop()
 		self notify( "new_goal_internal" );
 	}
 	
-    self doWalk( goal, dist, isScriptGoal );
+	self doWalk( goal, dist, isScriptGoal );
 	self.bot.towards_goal = undefined;
 	self.bot.next_wp = -1;
 	self.bot.second_next_wp = -1;
-}
-
-// Small randomized jitter movement when engaging to emulate human jiggle peeking
-micro_jiggle_movement()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	self endon( "kill_goal" );
-	
-	now = gettime();
-	if ( isdefined( self.bot.last_jiggle_time ) && now - self.bot.last_jiggle_time < 650 )
-	{
-		return;
-	}
-	self.bot.last_jiggle_time = now;
-	
-	if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
-	{
-		return;
-	}
-	
-	// choose a tiny sidestep based on current enemy bearing
-	angles = vectortoangles( vectornormalize( self.bot.target.entity.origin - self.origin ) );
-	left = ( 0, angles[ 1 ] + 90, 0 );
-	right = ( 0, angles[ 1 ] - 90, 0 );
-	choice = left;
-	if ( randomint( 100 ) < 50 )
-	{
-		choice = right;
-	}
-	
-	step = 35 + randomint( 25 );
-	if ( self.bot.issprinting )
-	{
-		step = 55 + randomint( 25 );
-	}
-	
-	from = self.origin + ( 0, 0, 16 );
-	to = from + anglestoforward( choice ) * step;
-	trace = bullettrace( from, to, false, self );
-	moveTo = trace[ "position" ];
-	
-	self botSetMoveTo( moveTo );
-	wait 0.1 + randomfloatrange( 0, 0.1 );
-	// optional counter-jiggle
-	if ( randomint( 100 ) < 60 )
-	{
-		choice = left;
-		if ( randomint( 100 ) < 50 )
-		{
-			choice = right;
-		}
-		to = from + anglestoforward( choice ) * step;
-		trace = bullettrace( from, to, false, self );
-		moveTo = trace[ "position" ];
-		self botSetMoveTo( moveTo );
-		wait 0.1 + randomfloatrange( 0, 0.1 );
-	}
-}
-
-// Finds a nearby cover position (near a wall) to move toward
-find_near_cover()
-{
-	org = self.origin + ( 0, 0, 16 );
-	bestPos = undefined;
-	bestFrac = 1.1;
-	for ( i = 0; i < 12; i++ )
-	{
-		ang = ( 0, i * 30, 0 );
-		dir = anglestoforward( ang );
-		trace = bullettrace( org, org + dir * 200, false, self );
-		if ( trace[ "fraction" ] < bestFrac )
-		{
-			bestFrac = trace[ "fraction" ];
-			// position slightly away from wall
-			bestPos = trace[ "position" ] - dir * 24;
-		}
-	}
-	if ( !isdefined( bestPos ) )
-	{
-		// fallback small forward step
-		bestPos = org + anglestoforward( self getplayerangles() ) * 96;
-	}
-	return bestPos;
-}
-
-// Watchdog to prevent open-field idling
-anti_idle()
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	idleMs = 0;
-	for ( ;; )
-	{
-		wait 0.25;
-		
-		if ( self.bot.isfrozen || self.bot.stop_move )
-		{
-			idleMs = 0;
-			continue;
-		}
-		
-		if ( isdefined( self.bot.target ) && isdefined( self.bot.target.entity ) )
-		{
-			idleMs = 0;
-			continue;
-		}
-		
-		if ( self HasScriptGoal() || self.bot_lock_goal )
-		{
-			idleMs = 0;
-			continue;
-		}
-		
-		if ( lengthsquared( self getvelocity() ) > 900 )
-		{
-			idleMs = 0;
-			continue;
-		}
-		
-		idleMs += 250;
-		if ( idleMs >= 1000 )
-		{
-			// decide to jiggle or move to cover
-			if ( randomint( 100 ) < 40 )
-			{
-				self thread micro_jiggle_movement();
-			}
-			else
-			{
-				pos = self find_near_cover();
-				self botSetMoveTo( pos );
-			}
-			idleMs = 0;
-		}
-	}
-}
-
-// Try a small lateral step to get sight to a blocked last-known position
-seek_better_angle( lookPos )
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	
-	myEye = self getEyePos();
-	if ( bullettracepassed( myEye, lookPos, false, self ) )
-	{
-		return;
-	}
-	
-	baseAngles = vectortoangles( lookPos - myEye );
-	left = ( 0, baseAngles[ 1 ] + 30, 0 );
-	right = ( 0, baseAngles[ 1 ] - 30, 0 );
-	probe = left;
-	if ( randomint( 100 ) < 50 )
-	{
-		probe = right;
-	}
-	step = 64;
-	from = self.origin + ( 0, 0, 16 );
-	to = playerphysicstrace( from, from + anglestoforward( probe ) * step, false, self );
-	to = physicstrace( to + ( 0, 0, 50 ), to + ( 0, 0, -40 ), false, self );
-	self botSetMoveTo( to );
-}
-
-// Quick shoulder check at corners before committing
-shoulder_check( targetPos )
-{
-	self endon( "disconnect" );
-	self endon( "death" );
-	self endon( "kill_goal" );
-	
-	// only if close to an obstruction towards the target
-	myEye = self getEyePos();
-	dir = vectortoangles( targetPos - myEye );
-	forward = anglestoforward( dir );
-	trace = bullettrace( myEye, myEye + forward * 64, false, self );
-	if ( trace[ "fraction" ] >= 1 )
-	{
-		return;
-	}
-	
-	leftAng = ( 0, dir[ 1 ] + 20, 0 );
-	rightAng = ( 0, dir[ 1 ] - 20, 0 );
-	peekTime = 0.12 + randomfloatrange( 0, 0.08 );
-	
-	// small left peek
-	posL = myEye + anglestoforward( leftAng ) * 24;
-	self botSetMoveTo( posL );
-	wait peekTime;
-	// then small right peek
-	posR = myEye + anglestoforward( rightAng ) * 24;
-	self botSetMoveTo( posR );
-	wait peekTime;
 }
 
 /*
@@ -3600,15 +2067,6 @@ walk()
 			continue;
 		}
 		
-        // if we have no target and we are in the open, keep shuffling to avoid idle standing
-        if ( !isdefined( self.bot.target ) || !isdefined( self.bot.target.entity ) )
-        {
-            if ( randomint( 100 ) < 25 )
-            {
-                self thread micro_jiggle_movement();
-            }
-        }
-
 		if ( self maps\mp\_flashgrenades::isflashbanged() )
 		{
 			self.bot.last_next_wp = -1;
@@ -3815,32 +2273,11 @@ doWalk( goal, dist, isScriptGoal )
 	self.bot.second_next_wp = -1;
 	self notify( "finished_static_waypoints" );
 	
-    if ( distancesquared( self.origin, goal ) > dist )
+	if ( distancesquared( self.origin, goal ) > dist )
 	{
 		self.bot.last_next_wp = -1;
 		self.bot.last_second_next_wp = -1;
-        // wrong corner check: occasionally pick a slightly offset approach vector
-        if ( randomint( 100 ) < 15 )
-        {
-            dir = vectortoangles( goal - self.origin );
-            // 20-40 units side offset
-            sideSign = -1;
-            if ( randomint( 100 ) < 50 )
-            {
-                sideSign = 1;
-            }
-            sideAmt = randomintrange( 20, 40 );
-            side = ( 0, sideSign * sideAmt, 0 );
-            offsetGoal = playerphysicstrace( goal + ( 0, 0, 32 ), goal + anglestoforward( dir + side ) * 64, false, self );
-            if ( distancesquared( offsetGoal, goal ) > 1 )
-            {
-                self movetowards( offsetGoal );
-            }
-        }
-        else
-        {
-            self movetowards( goal ); // any better way??
-        }
+		self movetowards( goal ); // any better way??
 	}
 	
 	self notify( "finished_goal" );
@@ -3879,7 +2316,7 @@ movetowards( goal )
 		tempGoalDist = level.bots_goaldistance;
 	}
 	
-    while ( distancesquared( self.origin, goal ) > tempGoalDist )
+	while ( distancesquared( self.origin, goal ) > tempGoalDist )
 	{
 		self botSetMoveTo( goal );
 		
@@ -3931,7 +2368,7 @@ movetowards( goal )
 			}
 		}
 		
-        wait 0.05;
+		wait 0.05;
 		time += 50;
 		
 		if ( lengthsquared( self getvelocity() ) < 1000 )
@@ -3952,13 +2389,7 @@ movetowards( goal )
 			tempGoalDist = level.bots_goaldistance;
 		}
 		
-        // insert shoulder check near obstacles toward goal
-        if ( randomint( 100 ) < 8 )
-        {
-            self thread shoulder_check( goal );
-        }
-
-        if ( stucks >= 2 )
+		if ( stucks >= 2 )
 		{
 			self notify( "bad_path_internal" );
 		}
@@ -3992,16 +2423,6 @@ getRandomLargestStafe( dist )
 	// find a better algo?
 	traces = NewHeap( ::HeapTraceFraction );
 	myOrg = self.origin + ( 0, 0, 16 );
-	
-	// cover-biased: prefer directions with closer wall on back/side
-	// try sampling backwards to find cover first
-	backAngles = ( 0, vectortoangles( self.origin - self.bot.moveto )[ 1 ], 0 );
-	backDir = anglestoforward( backAngles );
-	backTrace = bullettrace( myOrg, myOrg + backDir * -160 * dist, false, self );
-	if ( backTrace[ "fraction" ] < 1 )
-	{
-		return backTrace[ "position" ];
-	}
 	
 	traces HeapInsert( bullettrace( myOrg, myOrg + ( -100 * dist, 0, 0 ), false, self ) );
 	traces HeapInsert( bullettrace( myOrg, myOrg + ( 100 * dist, 0, 0 ), false, self ) );
@@ -4434,10 +2855,6 @@ bot_lookat( pos, time, vel, doAimPredict )
 	
 	myAngle = self getplayerangles();
 	angles = vectortoangles( ( pos - myEye ) - anglestoforward( myAngle ) );
-
-	// apply aim punch offset into target delta before stepping
-	ap = self.bot.aim_punch;
-	angles = ( angles[ 0 ] + ap[ 0 ], angles[ 1 ] + ap[ 1 ], 0 );
 	
 	X = angleclamp180( angles[ 0 ] - myAngle[ 0 ] );
 	X = X / steps;
