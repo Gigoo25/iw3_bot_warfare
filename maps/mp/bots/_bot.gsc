@@ -49,6 +49,11 @@ init()
 		setdvar( "bots_main_kickBotsAtEnd", false ); // kicks the bots at game end
 	}
 	
+	if ( getdvar( "bots_main_debug" ) == "" )
+	{
+		setdvar( "bots_main_debug", 0 ); // bot debug logging level: 0=off, 1=basic, 2=detailed
+	}
+	
 	if ( getdvar( "bots_manage_add" ) == "" )
 	{
 		setdvar( "bots_manage_add", 0 ); // amount of bots to add to the game
@@ -579,8 +584,19 @@ watchBotDebugEvent()
 			}
 			
 			BotBuiltinPrintConsole( big_str );
+			
+			// Also output to chat for visibility in Docker logs
+			if ( isdefined( self ) && isdefined( self.name ) )
+			{
+				debug_msg = "DEBUG_EVENT: " + self.name + " - " + msg;
+				if ( isdefined( str ) )
+				{
+					debug_msg += " (" + str + ")";
+				}
+				self sayall( debug_msg );
+			}
 		}
-		else if ( msg == "debug" && getdvarint( "bots_main_debug" ) )
+		else if ( msg == "debug" && getdvarint( "bots_main_debug" ) >= 1 )
 		{
 			BotBuiltinPrintConsole( "Bot Warfare debug: " + self.name + ": " + str );
 		}

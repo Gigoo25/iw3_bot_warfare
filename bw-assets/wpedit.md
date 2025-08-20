@@ -10,11 +10,11 @@ Now if you want to modify existing or create new waypoints for CoD4 maps, this i
 - [The Editor](#The-Editor)
 
 ## Setting up the Waypoint Editor
-The Bot Warfare mod comes with the Waypoint Editor out of the box, so its just a matter of telling the mod you want to use it. Its a matter of setting the `bots_main_debug` DVAR to `1`.
+The Bot Warfare mod comes with the Waypoint Editor out of the box, so its just a matter of telling the mod you want to use it. Its a matter of setting the `bots_waypoint_editor` DVAR to `1`.
 
 Start your server with the Bot Warfare mod.
 
-In the server console, type in `set bots_main_debug 1`.<br>
+In the server console, type in `set bots_waypoint_editor 1`.<br>
 ![Setting the dvar](/bw-assets/console.png)
 
 Now start a match with the map you want to edit with the `devmap <mapname>` command.<br>

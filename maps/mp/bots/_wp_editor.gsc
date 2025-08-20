@@ -12,12 +12,12 @@
 
 init()
 {
-	if ( getdvar( "bots_main_debug" ) == "" )
+	if ( getdvar( "bots_waypoint_editor" ) == "" )
 	{
-		setdvar( "bots_main_debug", 0 );
+		setdvar( "bots_waypoint_editor", 0 );
 	}
 	
-	if ( !getdvarint( "bots_main_debug" ) )
+	if ( !getdvarint( "bots_waypoint_editor" ) )
 	{
 		return;
 	}
@@ -39,49 +39,49 @@ init()
 	setdvar( "bots_manage_fill_kick", 1 );
 	setdvar( "bots_manage_fill_spec", 1 );
 	
-	if ( getdvar( "bots_main_debug_distance" ) == "" )
+	if ( getdvar( "bots_waypoint_editor_distance" ) == "" )
 	{
-		setdvar( "bots_main_debug_distance", 512.0 );
+		setdvar( "bots_waypoint_editor_distance", 512.0 );
 	}
 	
-	if ( getdvar( "bots_main_debug_cone" ) == "" )
+	if ( getdvar( "bots_waypoint_editor_cone" ) == "" )
 	{
-		setdvar( "bots_main_debug_cone", 0.65 );
+		setdvar( "bots_waypoint_editor_cone", 0.65 );
 	}
 	
-	if ( getdvar( "bots_main_debug_minDist" ) == "" )
+	if ( getdvar( "bots_waypoint_editor_minDist" ) == "" )
 	{
-		setdvar( "bots_main_debug_minDist", 32.0 );
+		setdvar( "bots_waypoint_editor_minDist", 32.0 );
 	}
 	
-	if ( getdvar( "bots_main_debug_drawThrough" ) == "" )
+	if ( getdvar( "bots_waypoint_editor_drawThrough" ) == "" )
 	{
-		setdvar( "bots_main_debug_drawThrough", false );
+		setdvar( "bots_waypoint_editor_drawThrough", false );
 	}
 	
-	if ( getdvar( "bots_main_debug_commandWait" ) == "" )
+	if ( getdvar( "bots_waypoint_editor_commandWait" ) == "" )
 	{
-		setdvar( "bots_main_debug_commandWait", 0.5 );
+		setdvar( "bots_waypoint_editor_commandWait", 0.5 );
 	}
 	
-	if ( getdvar( "bots_main_debug_framerate" ) == "" )
+	if ( getdvar( "bots_waypoint_editor_framerate" ) == "" )
 	{
-		setdvar( "bots_main_debug_framerate", 58 );
+		setdvar( "bots_waypoint_editor_framerate", 58 );
 	}
 	
-	if ( getdvar( "bots_main_debug_lineDuration" ) == "" )
+	if ( getdvar( "bots_waypoint_editor_lineDuration" ) == "" )
 	{
-		setdvar( "bots_main_debug_lineDuration", 3 );
+		setdvar( "bots_waypoint_editor_lineDuration", 3 );
 	}
 	
-	if ( getdvar( "bots_main_debug_printDuration" ) == "" )
+	if ( getdvar( "bots_waypoint_editor_printDuration" ) == "" )
 	{
-		setdvar( "bots_main_debug_printDuration", 3 );
+		setdvar( "bots_waypoint_editor_printDuration", 3 );
 	}
 	
-	if ( getdvar( "bots_main_debug_debugRate" ) == "" )
+	if ( getdvar( "bots_waypoint_editor_debugRate" ) == "" )
 	{
-		setdvar( "bots_main_debug_debugRate", 0.5 );
+		setdvar( "bots_waypoint_editor_debugRate", 0.5 );
 	}
 	
 	setdvar( "player_sustainAmmo", 1 );
@@ -146,11 +146,11 @@ debug()
 	self endon( "disconnect" );
 	self endon( "death" );
 	
-	self setclientdvar( "com_maxfps", getdvarint( "bots_main_debug_framerate" ) );
+	self setclientdvar( "com_maxfps", getdvarint( "bots_waypoint_editor_framerate" ) );
 	
 	for ( ;; )
 	{
-		wait getdvarfloat( "bots_main_debug_debugRate" );
+		wait getdvarfloat( "bots_waypoint_editor_debugRate" );
 		
 		if ( isdefined( self.command ) )
 		{
@@ -170,21 +170,21 @@ debug()
 			
 			wpOrg = level.waypoints[ i ].origin + ( 0, 0, 25 );
 			
-			if ( distance( level.waypoints[ i ].origin, self.origin ) < getdvarfloat( "bots_main_debug_distance" ) && ( bullettracepassed( myEye, wpOrg, false, self ) || getdvarint( "bots_main_debug_drawThrough" ) ) )
+			if ( distance( level.waypoints[ i ].origin, self.origin ) < getdvarfloat( "bots_waypoint_editor_distance" ) && ( bullettracepassed( myEye, wpOrg, false, self ) || getdvarint( "bots_waypoint_editor_drawThrough" ) ) )
 			{
 				for ( h = level.waypoints[ i ].children.size - 1; h >= 0; h-- )
 				{
-					line( wpOrg, level.waypoints[ level.waypoints[ i ].children[ h ] ].origin + ( 0, 0, 25 ), ( 1, 0, 1 ), 1, 1, getdvarint( "bots_main_debug_lineDuration" ) );
+					line( wpOrg, level.waypoints[ level.waypoints[ i ].children[ h ] ].origin + ( 0, 0, 25 ), ( 1, 0, 1 ), 1, 1, getdvarint( "bots_waypoint_editor_lineDuration" ) );
 				}
 				
-				if ( getConeDot( wpOrg, myEye, myAngles ) > getdvarfloat( "bots_main_debug_cone" ) )
+				if ( getConeDot( wpOrg, myEye, myAngles ) > getdvarfloat( "bots_waypoint_editor_cone" ) )
 				{
 					print3d( wpOrg, i, ( 1, 0, 0 ), 2, 1, 6 );
 				}
 				
 				if ( isdefined( level.waypoints[ i ].angles ) && level.waypoints[ i ].type != "stand" )
 				{
-					line( wpOrg, wpOrg + anglestoforward( level.waypoints[ i ].angles ) * 64, ( 1, 1, 1 ), 1, 1, getdvarint( "bots_main_debug_lineDuration" ) );
+					line( wpOrg, wpOrg + anglestoforward( level.waypoints[ i ].angles ) * 64, ( 1, 1, 1 ), 1, 1, getdvarint( "bots_waypoint_editor_lineDuration" ) );
 				}
 			}
 		}
@@ -207,9 +207,9 @@ debug()
 				}
 			}
 			
-			print3d( level.waypoints[ closest ].origin + ( 0, 0, 35 ), stringChildren, ( 0, 1, 0 ), 2, 1, getdvarint( "bots_main_debug_printDuration" ) );
+			print3d( level.waypoints[ closest ].origin + ( 0, 0, 35 ), stringChildren, ( 0, 1, 0 ), 2, 1, getdvarint( "bots_waypoint_editor_printDuration" ) );
 			
-			print3d( level.waypoints[ closest ].origin + ( 0, 0, 15 ), level.waypoints[ closest ].type, ( 0, 1, 0 ), 2, 1, getdvarint( "bots_main_debug_printDuration" ) );
+			print3d( level.waypoints[ closest ].origin + ( 0, 0, 15 ), level.waypoints[ closest ].type, ( 0, 1, 0 ), 2, 1, getdvarint( "bots_waypoint_editor_printDuration" ) );
 		}
 	}
 }
@@ -234,7 +234,7 @@ addWaypoints()
 		self iprintln( "Attack - grenade; Use - claymore" );
 		self iprintln( "Else(wait) - your stance" );
 		
-		wait getdvarfloat( "bots_main_debug_commandWait" );
+		wait getdvarfloat( "bots_waypoint_editor_commandWait" );
 		
 		self addWaypoint( pos );
 		
@@ -263,7 +263,7 @@ linkWaypoints()
 		
 		self iprintln( "ADS - unlink; Else(wait) - Link" );
 		
-		wait getdvarfloat( "bots_main_debug_commandWait" );
+		wait getdvarfloat( "bots_waypoint_editor_commandWait" );
 		
 		if ( !self adsbuttonpressed() )
 		{
@@ -300,7 +300,7 @@ deleteWaypoints()
 		self iprintln( "Attack - deleteAll; ADS - Load" );
 		self iprintln( "Else(wait) - delete" );
 		
-		wait getdvarfloat( "bots_main_debug_commandWait" );
+		wait getdvarfloat( "bots_waypoint_editor_commandWait" );
 		
 		if ( self attackbuttonpressed() )
 		{
@@ -340,7 +340,7 @@ watchSaveWaypointsCommand()
 		
 		self iprintln( "ADS - Autolink; Else(wait) - Save" );
 		
-		wait getdvarfloat( "bots_main_debug_commandWait" );
+		wait getdvarfloat( "bots_waypoint_editor_commandWait" );
 		
 		if ( !self adsbuttonpressed() )
 		{
@@ -539,7 +539,7 @@ deleteAllWaypoints()
 
 deleteWaypoint( nwp )
 {
-	if ( nwp == -1 || distance( self.origin, level.waypoints[ nwp ].origin ) > getdvarfloat( "bots_main_debug_minDist" ) )
+	if ( nwp == -1 || distance( self.origin, level.waypoints[ nwp ].origin ) > getdvarfloat( "bots_waypoint_editor_minDist" ) )
 	{
 		self iprintln( "No close enough waypoint to delete." );
 		return;
@@ -636,7 +636,7 @@ addWaypoint( pos )
 
 UnLinkWaypoint( nwp )
 {
-	if ( nwp == -1 || distance( self.origin, level.waypoints[ nwp ].origin ) > getdvarfloat( "bots_main_debug_minDist" ) )
+	if ( nwp == -1 || distance( self.origin, level.waypoints[ nwp ].origin ) > getdvarfloat( "bots_waypoint_editor_minDist" ) )
 	{
 		self iprintln( "Waypoint unlink Cancelled " + level.wptolink );
 		level.wptolink = -1;
@@ -659,7 +659,7 @@ UnLinkWaypoint( nwp )
 
 LinkWaypoint( nwp )
 {
-	if ( nwp == -1 || distance( self.origin, level.waypoints[ nwp ].origin ) > getdvarfloat( "bots_main_debug_minDist" ) )
+	if ( nwp == -1 || distance( self.origin, level.waypoints[ nwp ].origin ) > getdvarfloat( "bots_waypoint_editor_minDist" ) )
 	{
 		self iprintln( "Waypoint Link Cancelled " + level.wptolink );
 		level.wptolink = -1;

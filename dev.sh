@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Bot Warfare IW3 Development Script
-# Unified script for building, deploying, testing, and analyzing bots
+# Unified script for building, deploying, and testing bots
 
 # Color codes for output
 RED='\033[0;31m'
@@ -17,42 +17,9 @@ MOD_DIR="mods/mp_bots"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 TEST_DURATION=30  # Fixed 30 seconds for bot connection
 
-# Parse command line arguments
-SKIP_ANALYSIS=false
-ANALYSIS_WAIT=60  # Default 1 minute wait before analysis
-
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --no-analysis|-n)
-            SKIP_ANALYSIS=true
-            shift
-            ;;
-        -h|--help)
-            show_usage
-            exit 0
-            ;;
-        *)
-            # If it's a number, treat as analysis wait time
-            if [[ "$1" =~ ^[0-9]+$ ]]; then
-                ANALYSIS_WAIT=$1
-            else
-                echo -e "${RED}Error: Unknown argument '$1'${NC}"
-                show_usage
-                exit 1
-            fi
-            shift
-            ;;
-    esac
-done
-
 # Record start time
 START_TIME=$(date)
-if [ "$SKIP_ANALYSIS" = true ]; then
-    TOTAL_DURATION=$((TEST_DURATION + 10))  # +10 for build/deploy time
-else
-    TOTAL_DURATION=$((TEST_DURATION + ANALYSIS_WAIT + 10))  # +10 for build/deploy time
-fi
+TOTAL_DURATION=$((TEST_DURATION + 10))  # +10 for build/deploy time
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Bot Warfare IW3 Development Workflow${NC}"
@@ -61,48 +28,7 @@ echo ""
 echo -e "${BLUE}Session started at: ${START_TIME}${NC}"
 echo -e "${BLUE}Estimated total duration: ${TOTAL_DURATION} seconds${NC}"
 echo -e "${BLUE}Expected completion: $(date -d "+${TOTAL_DURATION} seconds")${NC}"
-if [ "$SKIP_ANALYSIS" = true ]; then
-    echo -e "${YELLOW}Analysis step: SKIPPED${NC}"
-else
-    echo -e "${BLUE}Analysis step: ENABLED${NC}"
-fi
-echo ""
-
-# Function to show usage
-show_usage() {
-    echo -e "${YELLOW}Usage:${NC}"
-    echo "  ./dev.sh [options] [analysis_wait_seconds]"
-    echo ""
-    echo -e "${YELLOW}Options:${NC}"
-    echo "  --no-analysis, -n    Skip the analysis step for quick iterations"
-    echo "  -h, --help          Show this help message"
-    echo ""
-    echo -e "${YELLOW}Examples:${NC}"
-    echo "  ./dev.sh                    # Build, deploy, test 30s, wait 60s, then analyze"
-    echo "  ./dev.sh 120               # Build, deploy, test 30s, wait 120s, then analyze"
-    echo "  ./dev.sh --no-analysis     # Build, deploy, test 30s, skip analysis"
-    echo "  ./dev.sh -n                # Same as --no-analysis"
-    echo "  ./dev.sh -n 30             # Build, deploy, test 30s, skip analysis (wait time ignored)"
-    echo ""
-    echo -e "${YELLOW}Parameters:${NC}"
-    echo "  analysis_wait_seconds: How long to wait before analyzing (default: 60, ignored if --no-analysis)"
-    echo "  Test duration is fixed at 30 seconds (sufficient for bot connection)"
-}
-
-# Validate analysis wait time (only if analysis is enabled)
-if [ "$SKIP_ANALYSIS" = false ] && (! [[ "$ANALYSIS_WAIT" =~ ^[0-9]+$ ]] || [ "$ANALYSIS_WAIT" -lt 10 ]); then
-    echo -e "${RED}Error: Analysis wait time must be a number >= 10 seconds${NC}"
-    show_usage
-    exit 1
-fi
-
-echo -e "${BLUE}Test duration: ${TEST_DURATION} seconds (fixed)${NC}"
-if [ "$SKIP_ANALYSIS" = false ]; then
-    echo -e "${BLUE}Analysis wait: ${ANALYSIS_WAIT} seconds${NC}"
-    echo -e "${BLUE}Total analysis time: $((TEST_DURATION + ANALYSIS_WAIT)) seconds${NC}"
-else
-    echo -e "${YELLOW}Analysis: DISABLED (quick mode)${NC}"
-fi
+echo -e "${BLUE}Test duration: ${TEST_DURATION} seconds${NC}"
 echo ""
 
 # Step 1: Build
@@ -199,54 +125,6 @@ echo ""
 echo -e "${GREEN}✓ Test completed at: ${TEST_END}${NC}"
 echo ""
 
-# Step 5: Wait before analysis
-if [ "$SKIP_ANALYSIS" = false ]; then
-    echo -e "${PURPLE}Step 5: Waiting ${ANALYSIS_WAIT} seconds before analysis...${NC}"
-    WAIT_START=$(date)
-    echo -e "${YELLOW}Wait started at: ${WAIT_START}${NC}"
-    echo -e "${YELLOW}Analysis will start at: $(date -d "+${ANALYSIS_WAIT} seconds")${NC}"
-    echo ""
-
-    # Show progress bar for analysis wait
-    echo -n "Waiting: ["
-    for i in {1..30}; do echo -n " "; done
-    echo -n "] 0%"
-    echo -ne "\r"
-
-    # Wait with progress bar
-    for i in $(seq 1 $ANALYSIS_WAIT); do
-        # Update progress bar every 2 seconds for longer waits
-        if [ $((i % 2)) -eq 0 ] || [ $i -eq $ANALYSIS_WAIT ]; then
-            progress=$((i * 30 / ANALYSIS_WAIT))
-            percentage=$((i * 100 / ANALYSIS_WAIT))
-            echo -n "Waiting: ["
-            for j in $(seq 1 $progress); do echo -n "#"; done
-            for j in $(seq $progress 29); do echo -n " "; done
-            echo -n "] ${percentage}%"
-            echo -ne "\r"
-        fi
-        sleep 1
-    done
-
-    WAIT_END=$(date)
-    echo ""
-    echo -e "${GREEN}✓ Wait completed at: ${WAIT_END}${NC}"
-    echo ""
-
-    # Step 6: Analyze results
-    echo -e "${PURPLE}Step 6: Analyzing bot behavior...${NC}"
-    ANALYSIS_START=$(date)
-    echo -e "${YELLOW}Analysis started at: ${ANALYSIS_START}${NC}"
-    ./analyze_bots.sh
-    ANALYSIS_END=$(date)
-    echo -e "${GREEN}✓ Analysis completed at: ${ANALYSIS_END}${NC}"
-else
-    echo -e "${YELLOW}Analysis: SKIPPED (quick mode)${NC}"
-    ANALYSIS_START=$(date)
-    ANALYSIS_END=$(date)
-    echo -e "${YELLOW}Analysis skipped.${NC}"
-fi
-
 # Calculate total duration
 END_TIME=$(date)
 echo ""
@@ -261,40 +139,16 @@ echo -e "  Build:              ${BUILD_START} → ${BUILD_END}"
 echo -e "  Deploy:             ${DEPLOY_START} → ${DEPLOY_END}"
 echo -e "  Server ready:       ${SERVER_READY_START} → $(date -d "+$((count+1)) seconds" 2>/dev/null || echo "~$(date)")"
 echo -e "  Test:               ${TEST_START} → ${TEST_END}"
-if [ "$SKIP_ANALYSIS" = false ]; then
-    echo -e "  Wait:               ${WAIT_START} → ${WAIT_END}"
-    echo -e "  Analysis:           ${ANALYSIS_START} → ${ANALYSIS_END}"
-else
-    echo -e "  Analysis:           SKIPPED (quick mode)"
-fi
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
-if [ "$SKIP_ANALYSIS" = false ]; then
-    echo "1. Review the analysis results above"
-    echo "2. Make improvements to the bot scripts"
-    echo "3. Run ./dev.sh again to test changes"
-    echo ""
-    echo -e "${BLUE}Quick commands:${NC}"
-    echo "  ./analyze_bots.sh --problems    # Show only problematic bots"
-    echo "  ./analyze_bots.sh --summary     # Show only summary"
-    echo "  ./analyze_bots.sh --recommendations  # Show only recommendations"
-    echo ""
-    echo -e "${YELLOW}Tips:${NC}"
-    echo "- Use shorter wait times (30-60s) for quick iterations"
-    echo "- Use longer wait times (120-300s) for comprehensive analysis"
-    echo "- 30 seconds is sufficient for bots to connect and start behaving"
-else
-    echo "1. Make improvements to the bot scripts"
-    echo "2. Run ./dev.sh again to test changes"
-    echo "3. Use ./dev.sh (without --no-analysis) for full analysis"
-    echo ""
-    echo -e "${BLUE}Quick commands:${NC}"
-    echo "  ./dev.sh --no-analysis     # Quick build/deploy/test cycle"
-    echo "  ./dev.sh                   # Full cycle with analysis"
-    echo "  ./analyze_bots.sh          # Run analysis manually"
-    echo ""
-    echo -e "${YELLOW}Tips:${NC}"
-    echo "- Use --no-analysis for quick iterations during development"
-    echo "- Run without --no-analysis for comprehensive analysis"
-    echo "- 30 seconds is sufficient for bots to connect and start behaving"
-fi
+echo "1. Make improvements to the bot scripts"
+echo "2. Run ./dev.sh again to test changes"
+echo ""
+echo -e "${BLUE}Quick commands:${NC}"
+echo "  ./dev.sh              # Build, deploy, and test"
+echo "  docker compose -f \"$SERVER_DIR/$DOCKER_COMPOSE_FILE\" logs -f  # View live logs"
+echo ""
+echo -e "${YELLOW}Tips:${NC}"
+echo "- 30 seconds is sufficient for bots to connect and start behaving"
+echo "- Check server logs for any script errors or bot activity"
+echo "- Use debug logging by setting bots_main_debug 2 in server.cfg"

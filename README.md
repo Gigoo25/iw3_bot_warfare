@@ -84,7 +84,8 @@ You can easily setup a local LAN dedicated server for you to join and play on. H
 | bots_main_GUIDs                  | A comma separated list of GUIDs of players who will be given host.                          |               |
 | bots_main_waitForHostTime        | How many seconds to wait for the host player to connect before adding bots to the match.    | 10            |
 | bots_main_menu                   | Enable the in-game menu for hosts.                                                          | 1             |
-| bots_main_debug                  | Enable the in-game waypoint editor at start of the game, or enable bot event prints. <ul><li>`0` - disable</li><li>`1` - for just debug events</li><li>`2` - for every event</li><ul> | 0 |
+| bots_main_debug                  | Bot debug logging level. <ul><li>`0` - disable</li><li>`1` - basic debug events</li><li>`2` - detailed debug events</li><ul> | 0 |
+| bots_waypoint_editor             | Enable the in-game waypoint editor at start of the game. <ul><li>`0` - disable</li><li>`1` - enable waypoint editor</li><ul> | 0 |
 | bots_main_kickBotsAtEnd          | Kick the bots at the end of a match.                                                        | 0             |
 | bots_main_chat                   | The rate bots will chat at, set to 0 to disable.                                            | 1.0           |
 | bots_manage_add                  | Amount of bots to add to the game, once bots are added, resets back to `0`.                 | 0             |
