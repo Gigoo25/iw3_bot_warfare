@@ -10,8 +10,9 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-SERVER_DIR="/home/rob/Cod4x Server"
-MOD_DIR="mods/mp_bots"
+# Containerized server (server/docker-compose.yml). The mod is mounted
+# read-only from output/, so deploying = build + restart.
+SERVER_DIR="$(cd "$(dirname "$0")" && pwd)/server"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 
 echo -e "${GREEN}========================================${NC}"
@@ -39,23 +40,6 @@ echo -e "${YELLOW}Building mod...${NC}"
 if [ $? -ne 0 ]; then
     echo -e "${RED}Error: Build failed, aborting deployment${NC}"
     exit 1
-fi
-
-# Create mod directory if it doesn't exist
-if [ ! -d "$SERVER_DIR/$MOD_DIR" ]; then
-    echo -e "${YELLOW}Creating mod directory...${NC}"
-    mkdir -p "$SERVER_DIR/$MOD_DIR"
-fi
-
-# Copy the IWD file to the server
-echo -e "${YELLOW}Copying mod to server...${NC}"
-cp output/z_svr_bots.iwd "$SERVER_DIR/$MOD_DIR/"
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Error: Failed to copy mod to server${NC}"
-    exit 1
-else
-    echo -e "${GREEN}✓${NC} Successfully copied mod to server"
 fi
 
 # Check if server is running
@@ -93,16 +77,7 @@ echo ""
 if [ "$connected" = true ]; then
     echo -e "${GREEN}Server started successfully!${NC}"
     echo -e "${GREEN}Your mod has been deployed and is now running.${NC}"
-    
-    # Create the botlogs directory in the server if it doesn't exist
-    if [ ! -d "$SERVER_DIR/botlogs" ]; then
-        mkdir -p "$SERVER_DIR/botlogs"
-        echo -e "${GREEN}Created botlogs directory for log storage.${NC}"
-    fi
-    
-    echo ""
-    echo -e "${YELLOW}Bot logs will be saved to:${NC} $SERVER_DIR/botlogs/"
-    echo ""
+
 else
     echo -e "${RED}Server may not have started correctly. Check logs manually:${NC}"
     echo -e "docker compose -f \"$SERVER_DIR/$DOCKER_COMPOSE_FILE\" logs"

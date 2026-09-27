@@ -1,0 +1,59 @@
+# Local CoD4x test server for Bot Warfare, fully containerized.
+# State lives in named volumes; nothing is written to the host.
+#
+#   One-time game download (interactive Steam login + Steam Guard):
+#     STEAM_USER=<name> docker compose run --rm steamcmd
+#   Server:
+#     docker compose up -d cod4x      (mod = ../output/z_svr_bots.iwd, run ../build.sh first)
+#     docker compose logs -f cod4x
+#   Wipe everything:
+#     docker compose down -v
+
+services:
+  steamcmd:
+    image: steamcmd/steamcmd:latest
+    profiles: ["setup"]
+    stdin_open: true
+    tty: true
+    volumes:
+      - cod4-game:/data
+      - steamcmd-home:/root/.local/share/Steam   # steamcmd install + cached login (re-runs skip Steam Guard)
+    command: >
+      +@sSteamCmdForcePlatformType windows
+      +force_install_dir /data
+      +login ${STEAM_USER:-anonymous}
+      +app_update 7940 validate
+      +quit
+
+  cod4x:
+    build: .
+    image: iw3-bot-warfare-cod4x
+    container_name: iw3-bot-warfare-cod4x
+    restart: unless-stopped   # e.g. host sleep trips the script loop detector (fatal with developer 1)
+    network_mode: host   # UDP 28960, so a LAN client can join
+    stdin_open: true
+    tty: true
+    volumes:
+      - cod4-game:/cod4                             # basepath: main/, zone/ from Steam
+      - cod4x-home:/cod4home                        # homepath: logs, CoD4x files, scriptdata writes
+      - ../output:/cod4/mods/mp_bots:ro             # built mod
+      - ../scriptdata:/cod4home/mods/mp_bots/scriptdata:ro   # waypoints: fs_fopen only reads loose files, not the iwd
+      - ./server.cfg:/cod4/main/server.cfg:ro
+    command: >
+      +set dedicated 1
+      +set net_port 28960
+      +set fs_basepath /cod4
+      +set fs_homepath /cod4home
+      +set fs_game mods/mp_bots
+      +set developer 1
+      +set developer_script 1
+      +set logfile 2
+      +set g_logsync 2
+      +set sv_punkbuster 0
+      +exec server.cfg
+      +map_rotate
+
+volumes:
+  cod4-game:
+  cod4x-home:
+  steamcmd-home:

@@ -12,8 +12,7 @@ PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
 # Configuration
-SERVER_DIR="/home/rob/Cod4x Server"
-MOD_DIR="mods/mp_bots"
+SERVER_DIR="$(cd "$(dirname "$0")" && pwd)/server"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 TEST_DURATION=30  # Fixed 30 seconds for bot connection
 
