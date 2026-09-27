@@ -1,0 +1,364 @@
+leave|en|gtg
+leave|en|bye
+leave|en|gn
+leave|en|cya
+leave|en|gotta go
+leave|en|bye all
+leave|en|gn all
+leave|en|dinner
+leave|en|bed time
+leave|en|later
+leave|en|cya guys
+leave|en|k im off
+rage_leave|en|this server sucks
+rage_leave|en|im out
+rage_leave|en|wtf this lag
+rage_leave|en|cant hit anything
+rage_leave|en|ffs
+rage_leave|en|done
+rage_leave|en|bs spawns
+rage_leave|en|lol ok
+greet|en|hi
+greet|en|hey
+greet|en|ello
+greet|en|hello all
+greet|en|yo
+greet|en|sup
+greet|en|hi guys
+greet|en|evening
+greet|en|hey all
+greet|en|o/
+greet|en|hiya
+greet|en|back
+kill|en|lol
+kill|en|rekt
+kill|en|ez
+kill|en|sorry {name}
+kill|en|sry
+kill|en|haha
+kill|en|gotcha
+kill|en|nt {name}
+kill|en|close one
+kill|en|lmao
+kill|en|oops
+kill|en|bye
+kill|en|xd
+kill|en|noob
+kill|en|boom
+kill|en|hehe
+kill|en|{name} lol
+kill|en|ur welcome
+kill|en|phew
+kill|en|sit
+kill|en|that was close
+streak|en|on fire
+streak|en|ez
+streak|en|cant stop
+streak|en|uav up
+streak|en|lol this team
+streak|en|who wants some
+streak|en|heli soon
+streak|en|5 in a row
+streak|en|tryhard mode
+death|en|wtf
+death|en|lag
+death|en|how
+death|en|omg
+death|en|ffs
+death|en|bs
+death|en|nice shot
+death|en|ns
+death|en|lol
+death|en|damn
+death|en|ugh
+death|en|rip
+death|en|wow
+death|en|no way
+death|en|hitreg lol
+death|en|i shot first
+death|en|what
+death|en|fml
+death|en|gay
+death|en|lucky
+death|en|sniper again
+death|en|jugg noob
+death|en|martyrdom lol
+death|en|noob tube
+death|en|camper
+death|en|nice camp
+death|en|brb
+death|en|k
+death|en|...
+death_repeat|en|{name} again..
+death_repeat|en|ok {name} chill
+death_repeat|en|{name} stop
+death_repeat|en|nice wh
+death_repeat|en|wallhack much?
+death_repeat|en|report {name}
+death_repeat|en|{name} is hacking
+death_repeat|en|how does {name} see me
+death_repeat|en|{name} u camping there all game?
+death_repeat|en|lol {name}
+death_repeat|en|again??
+death_repeat|en|{name} gg u win
+death_repeat|en|who is {name}
+gg|en|gg
+gg|en|gg
+gg|en|GG
+gg|en|gg wp
+gg|en|ggs
+gg|en|gg all
+gg|en|ggff
+gg|en|gg ez
+gg|en|wp
+gg|en|gg next map
+gg|en|close game
+gg|en|gg team
+idle|en|lag?
+idle|en|fps drops again
+idle|en|this map again
+idle|en|rtv
+idle|en|anyone else lagging
+idle|en|admin?
+idle|en|where is everyone
+idle|en|cg_fov 80
+idle|en|cg_fov 65
+idle|en|!fps
+idle|en|\
+idle|en|/kill
+idle|en|brb
+idle|en|back
+idle|en|afk 1 min
+idle|en|my ping lol
+idle|en|why so many snipers
+idle|en|no uav?
+idle|en|this server is dead
+idle|en|one more map then bed
+idle|en|anyone from uk?
+idle|en|doors?
+idle|en|k
+reply_hi|en|hi
+reply_hi|en|hey
+reply_hi|en|yo
+reply_hi|en|o/
+reply_hi|en|hello
+reply_hi|en|sup
+reply_gg|en|gg
+reply_gg|en|gg
+reply_gg|en|ggs
+reply_gg|en|wp
+reply_lol|en|lol
+reply_lol|en|xd
+reply_lol|en|haha
+reply_lol|en|lmao
+reply_hack|en|lol no
+reply_hack|en|just good
+reply_hack|en|ok
+reply_hack|en|cry more
+reply_hack|en|report then
+reply_hack|en|?
+reply_hack|en|nah
+reply_hack|en|sure
+reply_bots|en|?
+reply_bots|en|idk
+reply_bots|en|lol
+reply_bots|en|who cares
+reply_bots|en|whatever
+reply_bots|en|dunno
+reply_bots|en|ask admin
+reply_bots|en|maybe
+leave|es|me voy
+leave|es|chao
+leave|es|adios
+leave|es|hasta luego
+rage_leave|es|me voy de este server
+rage_leave|es|que asco
+greet|es|hola
+greet|es|holaa
+greet|es|buenas
+greet|es|hola a todos
+greet|es|wenas
+kill|es|jaja
+kill|es|jajaja
+kill|es|toma
+kill|es|facil
+kill|es|ez
+kill|es|sorry
+kill|es|fuera
+kill|es|adios
+streak|es|imparable
+streak|es|jaja que malos
+death|es|que
+death|es|lag
+death|es|pff
+death|es|que malo
+death|es|joder
+death|es|no puede ser
+death|es|de lejos
+death|es|camper
+death|es|hacker
+death|es|madre mia
+death|es|vaya
+death_repeat|es|{name} otra vez
+death_repeat|es|{name} hacker
+death_repeat|es|menudo wallhack lleva {name}
+death_repeat|es|es hacker si
+death_repeat|es|{name} tramposo
+gg|es|gg
+gg|es|gg wp
+gg|es|buena partida
+idle|es|alguien de espana?
+idle|es|hay lag
+idle|es|otro mapa
+idle|es|cg_fov 80
+idle|es|hola?
+reply_hi|es|hola
+reply_hi|es|buenas
+reply_hi|es|hola!
+reply_gg|es|gg
+reply_lol|es|jajaja
+reply_lol|es|jaja
+reply_hack|es|que dices
+reply_hack|es|no
+reply_hack|es|jaja no
+reply_bots|es|?
+reply_bots|es|ni idea
+reply_bots|es|jaja
+leave|pt|flw
+leave|pt|vlw
+leave|pt|tchau
+rage_leave|pt|lixo de server
+greet|pt|oi
+greet|pt|eae
+greet|pt|salve
+greet|pt|fala galera
+kill|pt|kkk
+kill|pt|kkkk
+kill|pt|toma
+kill|pt|ez
+kill|pt|foi mal
+streak|pt|ta facil
+death|pt|q isso
+death|pt|lag
+death|pt|vish
+death|pt|pqp
+death|pt|noob
+death|pt|camper
+death|pt|hacker
+death_repeat|pt|{name} de novo
+death_repeat|pt|{name} hack
+death_repeat|pt|wall {name}
+gg|pt|gg
+gg|pt|gg wp
+idle|pt|alguem br?
+idle|pt|lag
+idle|pt|cg_fov 80
+reply_hi|pt|oi
+reply_hi|pt|salve
+reply_gg|pt|gg
+reply_lol|pt|kkkk
+reply_hack|pt|q nada
+reply_hack|pt|kkk
+reply_bots|pt|?
+reply_bots|pt|sei la
+leave|it|ciao
+leave|it|vado
+rage_leave|it|basta
+greet|it|ciao
+greet|it|ciao a tutti
+greet|it|bella
+kill|it|ahah
+kill|it|preso
+kill|it|ez
+kill|it|scusa
+streak|it|troppo facile
+death|it|ma dai
+death|it|lag
+death|it|che cosa
+death|it|camper
+death|it|hacker
+death|it|mamma mia
+death_repeat|it|{name} ancora
+death_repeat|it|{name} hacker
+death_repeat|it|wall {name}
+gg|it|gg
+gg|it|gg wp
+idle|it|italiani?
+idle|it|c'e lag
+idle|it|cg_fov 80
+reply_hi|it|ciao
+reply_gg|it|gg
+reply_lol|it|ahahah
+reply_hack|it|ma va
+reply_hack|it|no
+reply_bots|it|?
+reply_bots|it|boh
+leave|de|bin weg
+leave|de|gn8
+leave|de|tschuess
+rage_leave|de|kein bock mehr
+greet|de|hi
+greet|de|moin
+greet|de|servus
+greet|de|n abend
+kill|de|haha
+kill|de|sry
+kill|de|ez
+kill|de|tschau
+streak|de|laeuft
+death|de|was
+death|de|lag
+death|de|boah
+death|de|camper
+death|de|noob
+death|de|wtf
+death|de|alter
+death_repeat|de|{name} schon wieder
+death_repeat|de|{name} wh
+death_repeat|de|{name} hacker
+gg|de|gg
+gg|de|gg wp
+idle|de|deutsche hier?
+idle|de|lag?
+idle|de|cg_fov 80
+reply_hi|de|moin
+reply_hi|de|hi
+reply_gg|de|gg
+reply_lol|de|haha
+reply_hack|de|noe
+reply_hack|de|lol
+reply_bots|de|?
+reply_bots|de|keine ahnung
+leave|pl|nara
+leave|pl|spadam
+rage_leave|pl|mam dosc
+greet|pl|siema
+greet|pl|elo
+greet|pl|czesc
+kill|pl|haha
+kill|pl|sorki
+kill|pl|ez
+kill|pl|nara
+streak|pl|ez
+death|pl|co
+death|pl|lag
+death|pl|kurde
+death|pl|camper
+death|pl|cheater
+death|pl|serio
+death_repeat|pl|{name} znowu
+death_repeat|pl|{name} ma wh
+death_repeat|pl|{name} cheater
+gg|pl|gg
+gg|pl|gg wp
+idle|pl|polacy?
+idle|pl|lagi
+idle|pl|cg_fov 80
+reply_hi|pl|siema
+reply_hi|pl|elo
+reply_gg|pl|gg
+reply_lol|pl|xd
+reply_hack|pl|nie
+reply_hack|pl|xd
+reply_bots|pl|?
+reply_bots|pl|nie wiem
