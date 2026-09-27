@@ -1,0 +1,43 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e50fa08..243b9a4 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 4.2)
++cmake_minimum_required(VERSION 3.25)
+ project(CoD4DM1 VERSION 1.0.7 LANGUAGES CXX)
+ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+ set(CMAKE_CXX_STANDARD 20)
+@@ -73,3 +73,8 @@ install(EXPORT CoD4DM1Targets
+ 
+ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CoD4DM1Config.cmake"
+     DESTINATION lib/cmake/CoD4DM1)
++
++# export tool (iw3_bot_warfare)
++add_executable(export export/export.cpp)
++target_link_libraries(export PRIVATE CoD4DM1)
++target_include_directories(export PRIVATE src)
+diff --git a/src/Demo/Demo.cpp b/src/Demo/Demo.cpp
+index 67c5d35..369b43d 100644
+--- a/src/Demo/Demo.cpp
++++ b/src/Demo/Demo.cpp
+@@ -442,6 +442,7 @@ namespace CoD4::DM1
+ 
+ 		index = seq & 0x7F;
+ 		CommandStrings[index] = cs;
++		AllServerCommands.emplace_back(CurrentSnapshot.serverTime, cs);
+ 
+ 		VerboseLog("server command[" << index << "]: " << cs << std::endl);
+ 	}
+diff --git a/src/Demo/Demo.hpp b/src/Demo/Demo.hpp
+index 555fabf..454c2f8 100644
+--- a/src/Demo/Demo.hpp
++++ b/src/Demo/Demo.hpp
+@@ -56,6 +56,7 @@ namespace CoD4::DM1
+ 		archivedFrame_t CurrentFrame = { 0 };
+ 
+ 		std::array<std::string, MAX_CMDSTRINGS> CommandStrings{};
++		std::vector<std::pair<int, std::string>> AllServerCommands; // export: every server command in order
+ 		std::array<std::string, MAX_CONFIGSTRINGS> ValidConfigStrings{};
+ 		std::array<std::string, MAX_CONFIGSTRINGS> ConfigStrings{};
+ 
