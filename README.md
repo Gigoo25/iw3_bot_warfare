@@ -119,10 +119,18 @@ You can easily setup a local LAN dedicated server for you to join and play on. H
 | bots_play_killstreak             | If the bots can call in killstreaks.                                                           | 1          |
 | bots_play_ads                    | If the bots can aim down sights.                                                               | 1          |
 | bots_play_aim                    | If the bots can aim.                                                                           | 1          |
+| bots_aim_recoil                  | If the bots simulate full-auto recoil climb in their aim (enable if killcams show laser sprays). | 0          |
 
 
 ## Changelog
 - v2.3.0 (not released yet)
+	- Humanized perception: contextual reaction times, peripheral vision, threat-based target selection
+	- Humanized aim: motor model with Fitts'-law flicks, corrective submovements, lagged tracking with partial lead, slow sway, recoil climb, trigger discipline
+	- Humanized movement: patrol routing, ADAD strafe bursts, turn arcs, cautious entries, stuck hesitation, sprint discipline, waypoint pre-aim
+	- Bot personas (rusher/anchor/objective/support) with mistake economy
+	- Objective teamwork: dom crowding avoidance, follow spacing, urgent SD/SAB plants on low clock
+	- Fixed crashes: target/waypoint derefs, A* hole, SAB/SD carrier, HQ radio, menu freeze, editor delete
+	- Fixed legacy waypoint types in mp_brecourt_v2
 	- Smoothed bot aim at range
 	- Fixed bots_manage_fill_spec players being counted with bots_manage_fill_mode 1 (bot only)
 	- Added bots_manage_fill_watchplayers dvar
