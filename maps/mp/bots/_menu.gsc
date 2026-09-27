@@ -671,6 +671,8 @@ ExitMenu()
 	
 	self setclientdvar( "r_blur", "0" );
 	self setclientdvar( "sc_blur", "2" );
+	
+	self freezecontrols( false );
 }
 
 initHudElem( txt, xl, yl )

@@ -551,6 +551,11 @@ deleteWaypoint( nwp )
 	{
 		child = level.waypoints[ nwp ].children[ i ];
 		
+		if ( child < 0 || child >= level.waypointcount || !isdefined( level.waypoints[ child ] ) )
+		{
+			continue;
+		}
+		
 		level.waypoints[ child ].children = array_remove( level.waypoints[ child ].children, nwp );
 	}
 	
