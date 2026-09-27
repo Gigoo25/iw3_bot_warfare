@@ -9,3 +9,5 @@ qconsole.log.old
 output/
 .vscode
 bot_analysis_*
+tools/.bin/
+__pycache__/
