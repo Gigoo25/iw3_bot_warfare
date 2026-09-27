@@ -8,6 +8,7 @@ init()
 	level.bot_builtins[ "botmoveto" ] = ::do_botmoveto;
 	level.bot_builtins[ "botmeleeparams" ] = ::do_botmeleeparams;
 	level.bot_builtins[ "botangles" ] = ::do_botangles;
+	level.bot_builtins[ "botweapon" ] = ::do_botweapon;
 	level.bot_builtins[ "isbot" ] = ::do_isbot;
 	level.bot_builtins[ "fs_fopen" ] = ::do_fs_fopen;
 	level.bot_builtins[ "fs_fclose" ] = ::do_fs_fclose;
@@ -54,6 +55,13 @@ do_botangles( angles )
 {
 	self setplayerangles( angles );
 	// self botangles( angles[ 0 ], angles[ 1 ], angles[ 2 ] );
+}
+
+do_botweapon( weapon )
+{
+	// CoD4x < Nov 2023: switchtoweapon doesn't update the bot's requested weapon
+	// (g_botai.weapon), so bots end up empty-handed after any weapon change.
+	self botweapon( weapon );
 }
 
 do_isbot()

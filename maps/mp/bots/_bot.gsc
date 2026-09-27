@@ -49,6 +49,21 @@ init()
 		setdvar( "bots_main_kickBotsAtEnd", false ); // kicks the bots at game end
 	}
 	
+	if ( getdvar( "bots_nav_human" ) == "" ) // use navigation graphs learned from human demos when a map has one
+	{
+		setdvar( "bots_nav_human", true );
+	}
+	
+	if ( getdvar( "bots_motor_model" ) == "" ) // bots move with the human movement state machine learned from demos (_bot_motor_data.gsc)
+	{
+		setdvar( "bots_motor_model", true );
+	}
+	
+	if ( getdvar( "bots_telemetry" ) == "" ) // 5Hz movement lines (BT;) for every player in games_mp.log, for tools/movestats.py
+	{
+		setdvar( "bots_telemetry", 0 );
+	}
+	
 	if ( getdvar( "bots_main_debug" ) == "" )
 	{
 		setdvar( "bots_main_debug", 0 ); // bot debug logging level: 0=off, 1=basic, 2=detailed
@@ -72,6 +87,11 @@ init()
 	if ( getdvar( "bots_manage_fill_mode" ) == "" )
 	{
 		setdvar( "bots_manage_fill_mode", 0 ); // fill mode, 0 adds everyone, 1 just bots, 2 maintains at maps, 3 is 2 with 1
+	}
+	
+	if ( getdvar( "bots_lobby_human" ) == "" ) // trickle joins, sessions/leaves, same bots carried across maps
+	{
+		setdvar( "bots_lobby_human", true );
 	}
 	
 	if ( getdvar( "bots_manage_fill_kick" ) == "" )
@@ -144,6 +164,11 @@ init()
 		setdvar( "bots_loadout_reasonable", false );
 	}
 	
+	if ( getdvar( "bots_loadout_meta" ) == "" ) // weight loadouts like real public players (0 = uniform random)
+	{
+		setdvar( "bots_loadout_meta", true );
+	}
+	
 	if ( getdvar( "bots_loadout_allow_op" ) == "" ) // allows jug, marty and laststand
 	{
 		setdvar( "bots_loadout_allow_op", true );
@@ -212,6 +237,11 @@ init()
 	if ( getdvar( "bots_play_aim" ) == "" )
 	{
 		setdvar( "bots_play_aim", true );
+	}
+	
+	if ( getdvar( "bots_aim_recoil" ) == "" ) // bots simulate full-auto climb in their aim; off: A/B showed it pushed headshots 14% -> 21%. Enable only if killcams show laser sprays
+	{
+		setdvar( "bots_aim_recoil", false );
 	}
 	
 	if ( !isdefined( game[ "botWarfare" ] ) )
@@ -285,6 +315,7 @@ init()
 */
 handleBots()
 {
+	loadLobbyCarry();
 	level thread teamBots();
 	level thread diffBots();
 	level addBots();
@@ -295,6 +326,12 @@ handleBots()
 	}
 	
 	setdvar( "bots_manage_add", getBotArray().size );
+	
+	if ( getdvarint( "bots_lobby_human" ) )
+	{
+		saveLobbyCarry();
+		setdvar( "bots_manage_add", 0 ); // carried bots rejoin through the fill logic
+	}
 	
 	if ( !getdvarint( "bots_main_kickBotsAtEnd" ) )
 	{
@@ -307,6 +344,93 @@ handleBots()
 	{
 		kick( bots[ i ] getentitynumber() );
 	}
+}
+
+/*
+	Saves the lobby at intermission so the same "players" reconnect next map
+	(CoD4x drops test clients on map change). ~15% leave at map change.
+	Record: name`persona`skill`lang`leadroll  (records joined with ~, - = unset)
+*/
+saveLobbyCarry()
+{
+	bots = getBotArray();
+	out = "";
+	
+	for ( i = 0; i < bots.size; i++ )
+	{
+		bot = bots[ i ];
+		
+		if ( randomint( 100 ) < 15 || !isdefined( bot.pers[ "bots" ] ) )
+		{
+			continue;
+		}
+		
+		rec = stripTrailingWhite( bot.name );
+		rec += "`" + carryField( bot.pers[ "bots" ][ "persona" ] );
+		rec += "`" + carryField( bot.pers[ "bots" ][ "skill" ][ "base" ] );
+		rec += "`" + carryField( bot.pers[ "bots" ][ "chat_lang" ] );
+		rec += "`" + carryField( bot.pers[ "bots" ][ "lead_frac_roll" ] );
+		
+		if ( out != "" )
+		{
+			out += "~";
+		}
+		
+		out += rec;
+	}
+	
+	setdvar( "bots_lobby_carry", out );
+}
+
+/*
+	Drops trailing ^7 color resets so carried names don't grow each map.
+*/
+stripTrailingWhite( name )
+{
+	end = name.size;
+	
+	while ( end >= 2 && name[ end - 2 ] == "^" && name[ end - 1 ] == "7" )
+	{
+		end -= 2;
+	}
+	
+	out = "";
+	
+	for ( i = 0; i < end; i++ )
+	{
+		out += name[ i ];
+	}
+	
+	return out;
+}
+
+/*
+	A carry field as text; "-" when unset (strtok drops empty fields).
+*/
+carryField( value )
+{
+	if ( !isdefined( value ) )
+	{
+		return "-";
+	}
+	
+	return "" + value;
+}
+
+/*
+	Reads the carried lobby for this map.
+*/
+loadLobbyCarry()
+{
+	level.bot_carry = [];
+	
+	if ( !getdvarint( "bots_lobby_human" ) || getdvar( "bots_lobby_carry" ) == "" )
+	{
+		return;
+	}
+	
+	level.bot_carry = strtok( getdvar( "bots_lobby_carry" ), "~" );
+	setdvar( "bots_lobby_carry", "" );
 }
 
 /*
@@ -340,6 +464,32 @@ onPlayerKilled( eInflictor, eAttacker, iDamage, sMeansOfDeath, sWeapon, vDir, sH
 	{
 		eAttacker.lastkilledplayer = self;
 		eAttacker notify( "killed_enemy" );
+	}
+	
+	// every death is a fight spot, and nearby teammate bots react to it
+	// (humans stop 77% of the time when a teammate drops within 1500u)
+	bot_record_fight( self.origin );
+	
+	threat = undefined;
+	
+	if ( isdefined( eAttacker ) && isplayer( eAttacker ) && eAttacker != self )
+	{
+		threat = eAttacker.origin;
+	}
+	
+	for ( i = 0; i < level.bots.size; i++ )
+	{
+		bot = level.bots[ i ];
+		
+		if ( !isdefined( bot ) || bot == self || !isalive( bot ) || !isdefined( bot.team ) || ( level.teambased && bot.team != self.team ) )
+		{
+			continue;
+		}
+		
+		if ( distancesquared( bot.origin, self.origin ) < 1500 * 1500 )
+		{
+			bot thread maps\mp\bots\_bot_internal::botMateDown( self.origin, threat );
+		}
 	}
 	
 	self [[ level.prevcallbackplayerkilled ]]( eInflictor, eAttacker, iDamage, sMeansOfDeath, sWeapon, vDir, sHitLoc, timeOffset, deathAnimDuration );
@@ -432,8 +582,53 @@ onPlayerConnect()
 		player thread onGrenadeFire();
 		player thread onWeaponFired();
 		player thread doPlayerModelFix();
+		player thread telemetryWatch();
 		
 		player thread connected();
+	}
+}
+
+/*
+	Movement telemetry for every player when bots_telemetry is on. Humans on the
+	same server give the baseline. Format:
+	BT;num;name;isbot;x;y;z;vx;vy;vz;pitch;yaw;stance;ads*10;hastarget;skill;weapon
+*/
+telemetryWatch()
+{
+	self endon( "disconnect" );
+	
+	for ( ;; )
+	{
+		wait 0.2;
+		
+		if ( !getdvarint( "bots_telemetry" ) || !isalive( self ) || self.sessionstate != "playing" )
+		{
+			continue;
+		}
+		
+		isBot = 0;
+		hasTarget = 0;
+		skill = 0;
+		
+		if ( self is_bot() )
+		{
+			isBot = 1;
+			
+			if ( isdefined( self.pers[ "bots" ] ) && isdefined( self.pers[ "bots" ][ "skill" ][ "base" ] ) )
+			{
+				skill = self.pers[ "bots" ][ "skill" ][ "base" ];
+			}
+			
+			if ( isdefined( self.bot ) && isdefined( self.bot.target ) )
+			{
+				hasTarget = 1;
+			}
+		}
+		
+		o = self.origin;
+		v = self getvelocity();
+		a = self getplayerangles();
+		logprint( "BT;" + self getentitynumber() + ";" + self.name + ";" + isBot + ";" + int( o[ 0 ] ) + ";" + int( o[ 1 ] ) + ";" + int( o[ 2 ] ) + ";" + int( v[ 0 ] ) + ";" + int( v[ 1 ] ) + ";" + int( v[ 2 ] ) + ";" + int( a[ 0 ] ) + ";" + int( a[ 1 ] ) + ";" + self getstance() + ";" + int( self playerads() * 10 ) + ";" + hasTarget + ";" + skill + ";" + self getcurrentweapon() + "\n" );
 	}
 }
 
@@ -620,7 +815,18 @@ added()
 add_bot()
 {
 	// cod4x specific
-	name = getABotName();
+	carry = undefined;
+	
+	if ( isdefined( level.bot_carry ) && level.bot_carry.size )
+	{
+		carry = strtok( level.bot_carry[ level.bot_carry.size - 1 ], "`" );
+		level.bot_carry[ level.bot_carry.size - 1 ] = undefined;
+		name = carry[ 0 ];
+	}
+	else
+	{
+		name = getABotName();
+	}
 	
 	bot = undefined;
 	
@@ -637,6 +843,7 @@ add_bot()
 	{
 		bot.pers[ "isBot" ] = true;
 		bot.pers[ "isBotWarfare" ] = true;
+		bot.bot_carry = carry;
 		bot thread added();
 	}
 }
@@ -945,10 +1152,30 @@ addBots_loop()
 			botsToAdd = 64;
 		}
 		
-		for ( ; botsToAdd > 0; botsToAdd-- )
+		if ( getdvarint( "bots_lobby_human" ) )
 		{
-			level add_bot();
-			wait 0.25;
+			// people trickle in; players from the last map reconnect quickly
+			if ( !isdefined( level.bot_next_join ) || gettime() >= level.bot_next_join )
+			{
+				level add_bot();
+				
+				if ( isdefined( level.bot_carry ) && level.bot_carry.size )
+				{
+					level.bot_next_join = gettime() + randomintrange( 300, 2500 );
+				}
+				else
+				{
+					level.bot_next_join = gettime() + randomintrange( 4000, 20000 );
+				}
+			}
+		}
+		else
+		{
+			for ( ; botsToAdd > 0; botsToAdd-- )
+			{
+				level add_bot();
+				wait 0.25;
+			}
 		}
 	}
 	
@@ -960,6 +1187,18 @@ addBots_loop()
 	}
 	
 	fillAmount = getdvarint( "bots_manage_fill" );
+	
+	// real lobbies breathe: population drifts a little every few minutes
+	if ( getdvarint( "bots_lobby_human" ) && fillAmount > 4 )
+	{
+		if ( !isdefined( level.bot_fill_offset_until ) || gettime() > level.bot_fill_offset_until )
+		{
+			level.bot_fill_offset = randomintrange( -2, 2 );
+			level.bot_fill_offset_until = gettime() + randomintrange( 180000, 360000 );
+		}
+		
+		fillAmount += level.bot_fill_offset;
+	}
 	
 	players = 0;
 	bots = 0;
@@ -1273,6 +1512,14 @@ onWeaponFired()
 	{
 		self waittill( "weapon_fired" );
 		self thread doFiringThread();
+		
+		// remember audible (unsilenced) gunfire for bots' hearing
+		weap = self getcurrentweapon();
+		
+		if ( !issubstr( weap, "silencer" ) )
+		{
+			bot_record_shot( self.origin, self.team );
+		}
 	}
 }
 

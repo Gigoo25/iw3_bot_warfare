@@ -34,6 +34,12 @@ added()
 	self.pers[ "bots" ][ "skill" ][ "bones" ] = "j_head"; // a list of comma seperated bones the bot will aim at
 	self.pers[ "bots" ][ "skill" ][ "ads_fov_multi" ] = 0.5; // a factor of how much ads to reduce when adsing
 	self.pers[ "bots" ][ "skill" ][ "ads_aimspeed_multi" ] = 0.5; // a factor of how much more aimspeed delay to add
+	self.pers[ "bots" ][ "skill" ][ "aim_jitter" ] = 0.3; // per-tick aim noise (degrees), human hand shake
+	self.pers[ "bots" ][ "skill" ][ "overshoot" ] = 15; // percentage chance the flick overshoots and must correct
+	self.pers[ "bots" ][ "skill" ][ "trigger_delay" ] = 120; // extra ms of trigger discipline after on-target (ms)
+	self.pers[ "bots" ][ "skill" ][ "switch_penalty" ] = 250; // ms cost to switch targets, humans can't snap-swap
+	self.pers[ "bots" ][ "skill" ][ "periph_bonus" ] = 0.08; // effective FOV widen for moving/firing targets
+	self.pers[ "bots" ][ "skill" ][ "lead_frac" ] = 0.8; // how much of its own tracking lag the bot leads out on movers
 	
 	self.pers[ "bots" ][ "behavior" ] = [];
 	self.pers[ "bots" ][ "behavior" ][ "strafe" ] = 50; // percentage of how often the bot strafes a target
@@ -108,6 +114,13 @@ onKilled( eInflictor, eAttacker, iDamage, sMeansOfDeath, sWeapon, vDir, sHitLoc,
 */
 onDamage( eInflictor, eAttacker, iDamage, iDFlags, sMeansOfDeath, sWeapon, vPoint, vDir, sHitLoc, timeOffset )
 {
+	if ( !isdefined( self.bot ) )
+	{
+		return;
+	}
+
+	self.bot.last_damage_time = gettime();
+	self.bot.last_damage_attacker = eAttacker;
 }
 
 /*
@@ -163,6 +176,21 @@ resetBotVars()
 	self.bot.prio_objective = false;
 	
 	self.bot.rand = randomint( 100 );
+
+	self.bot.last_damage_time = 0;
+	self.bot.last_damage_attacker = undefined;
+	self.bot.target_switch_time = 0;
+	self.bot.aim_ang = undefined;
+	self.bot.aim_fired_time = undefined;
+	self.bot.preaim_bonus_until = 0;
+	self.bot.cautious = false;
+	self.bot.glance_until = 0;
+	self.bot.glance_next = 0;
+	self.bot.glance_pos = undefined;
+	self.bot.spawn_origin = self.origin;
+	self.bot.spawn_time = gettime();
+	self.bot.goal_view_yaw = undefined;
+	self.bot.goal_cell = undefined;
 	
 	self BotBuiltinBotStop();
 }
@@ -225,6 +253,7 @@ spawned()
 	self thread target();
 	self thread updateBones();
 	self thread aim();
+	self thread motorController();
 	self thread watchHoldBreath();
 	self thread onNewEnemy();
 	self thread doBotMovement();
@@ -359,9 +388,12 @@ doBotMovement_loop( data )
 {
 	move_To = self.bot.moveto;
 	angles = self getplayerangles();
+	
 	dir = ( 0, 0, 0 );
 	
-	if ( distancesquared( self.origin, move_To ) >= 49 )
+	// 24u dead zone (was 7u): stopping bots slid past their stop point and
+	// stepped back, jittering in place (2.5x the humans' direction reversals).
+	if ( distancesquared( self.origin, move_To ) >= 24 * 24 )
 	{
 		cosa = cos( 0 - angles[ 1 ] );
 		sina = sin( 0 - angles[ 1 ] );
@@ -567,12 +599,21 @@ onWeaponChange()
 			// hack fix for botstop overridding weapon
 			if ( newWeapon != "none" )
 			{
+				self BotBuiltinBotWeapon( newWeapon );
 				self switchtoweapon( newWeapon );
 			}
 		}
 		else
 		{
 			self waittill( "weapon_change", newWeapon );
+			
+			// keep the bot's requested weapon in sync with pickups, grenade
+			// returns etc.; otherwise it keeps asking for the old one and ends
+			// up empty-handed
+			if ( newWeapon != "none" )
+			{
+				self BotBuiltinBotWeapon( newWeapon );
+			}
 		}
 		
 		self.bot.is_cur_full_auto = WeaponIsFullAuto( newWeapon );
@@ -661,7 +702,7 @@ stance_loop()
 	
 	toStance = "stand";
 	
-	if ( self.bot.next_wp != -1 )
+	if ( self.bot.next_wp != -1 && self.bot.next_wp >= 0 && self.bot.next_wp < level.waypoints.size && isdefined( level.waypoints[ self.bot.next_wp ] ) )
 	{
 		toStance = level.waypoints[ self.bot.next_wp ].type;
 	}
@@ -671,7 +712,15 @@ stance_loop()
 		toStance = "crouch";
 	}
 	
-	if ( toStance == "stand" && randomint( 100 ) <= self.pers[ "bots" ][ "behavior" ][ "crouch" ] )
+	// People don't crouch-walk while travelling; only some cautious approaches.
+	if ( getdvarint( "bots_motor_model" ) )
+	{
+		if ( toStance == "stand" && isdefined( self.bot.motor_stance ) )
+		{
+			toStance = self.bot.motor_stance;
+		}
+	}
+	else if ( toStance == "stand" && self.bot.cautious && randomint( 100 ) <= self.pers[ "bots" ][ "behavior" ][ "crouch" ] / 2 )
 	{
 		toStance = "crouch";
 	}
@@ -704,6 +753,9 @@ stance_loop()
 	time = gettime();
 	chance = self.pers[ "bots" ][ "behavior" ][ "sprint" ];
 	
+	// human baseline sprints ~36% of the time; bots were at ~16%
+	chance *= 1.6;
+	
 	if ( time - self.lastspawntime < 5000 )
 	{
 		chance *= 2;
@@ -716,6 +768,22 @@ stance_loop()
 	
 	if ( toStance != "stand" || self.bot.isreloading || self.bot.issprinting || self.bot.isfraggingafter || self.bot.issmokingafter )
 	{
+		return;
+	}
+	
+	if ( self playerads() > 0.2 )
+	{
+		return;
+	}
+	
+	if ( gettime() - self.bot.last_damage_time < 800 )
+	{
+		return;
+	}
+	
+	if ( getdvarint( "bots_motor_model" ) )
+	{
+		// the motor model decides when to sprint (it starts sprints itself)
 		return;
 	}
 	
@@ -756,9 +824,41 @@ setBotWantSprint()
 	
 	self.bot.wantsprint = true;
 	
+	if ( randomint( 100 ) < 20 )
+	{
+		self thread sprintHop();
+	}
+	
 	self waittill_notify_or_timeout( "kill_goal", 10 );
 	
 	self.bot.wantsprint = false;
+}
+
+/*
+	Occasional sprint hop down a lane, like players bouncing off spawn.
+*/
+sprintHop()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	level endon ( "game_ended" );
+	
+	wait randomfloatrange( 0.5, 1.2 );
+	
+	if ( !self.bot.wantsprint || !self.bot.issprinting )
+	{
+		return;
+	}
+	
+	if ( isdefined( self.bot.target ) )
+	{
+		return;
+	}
+	
+	if ( self getstance() == "stand" )
+	{
+		self thread jump();
+	}
 }
 
 /*
@@ -884,7 +984,11 @@ reload_thread()
 	
 	if ( isdefined( self.bot.target ) || self.bot.isreloading || self.bot.isfraggingafter || self.bot.issmokingafter || self.bot.isfrozen )
 	{
-		return;
+		// Low-skill panic reloads mid-fight, like real bad players.
+		if ( !isdefined( self.bot.target ) || !isdefined( self.pers[ "bots" ][ "skill" ][ "base" ] ) || self.pers[ "bots" ][ "skill" ][ "base" ] > 2 || randomint( 100 ) >= 8 )
+		{
+			return;
+		}
 	}
 	
 	cur = self getcurrentweapon();
@@ -929,8 +1033,22 @@ updateBones()
 			{
 				continue;
 			}
-			
-			self.bot.target.bone = random( bones );
+
+			if ( bones.size <= 0 )
+			{
+				continue;
+			}
+
+			bone = random( bones );
+
+			// The skill's bone list sets the weighting. Humans rarely go for the
+			// head at long range, so drift those picks to center mass when allowed.
+			if ( bone == "j_head" && isdefined( self.bot.target.dist ) && self.bot.target.dist > 1500 * 1500 && issubstr( oldbones, "j_spineupper" ) && randomint( 100 ) < 60 )
+			{
+				bone = "j_spineupper";
+			}
+
+			self.bot.target.bone = bone;
 		}
 	}
 }
@@ -943,6 +1061,7 @@ createTargetObj( ent, theTime )
 	obj = spawnstruct();
 	obj.entity = ent;
 	obj.last_seen_pos = ( 0, 0, 0 );
+	obj.last_vel = ( 0, 0, 0 );
 	obj.dist = 0;
 	obj.time = theTime;
 	obj.trace_time = 0;
@@ -954,6 +1073,20 @@ createTargetObj( ent, theTime )
 	obj.bone = undefined;
 	obj.aim_offset = undefined;
 	obj.aim_offset_base = undefined;
+	obj.react_required = -1;
+	obj.confirm_count = 0;
+	obj.danger = 0;
+	
+	// Whether this engagement would be settled with the knife at point blank
+	// even with a loaded gun (most people just shoot; rushers knife more).
+	knifeChance = 30;
+	
+	if ( isdefined( self.pers[ "bots" ][ "persona" ] ) && self.pers[ "bots" ][ "persona" ] == "rusher" )
+	{
+		knifeChance = 55;
+	}
+	
+	obj.knife_pref = randomint( 100 ) < knifeChance;
 	
 	return obj;
 }
@@ -966,12 +1099,28 @@ updateAimOffset( obj )
 	if ( !isdefined( obj.aim_offset_base ) )
 	{
 		diffAimAmount = self.pers[ "bots" ][ "skill" ][ "aim_offset_amount" ];
+
+		// Weapon-aware error: snipers precise when still, SMGs/shotguns spray wide while moving.
+		errScale = 1.0;
+		if ( self.bot.is_cur_sniper && self.bot.issprinting )
+		{
+			errScale = 2.0;
+		}
+		else if ( !self.bot.is_cur_full_auto )
+		{
+			errScale = 0.8;
+		}
+
+		if ( lengthsquared( self getvelocity() ) > 100 * 100 )
+		{
+			errScale *= 1.5;
+		}
 		
 		if ( diffAimAmount > 0 )
 		{
-			obj.aim_offset_base = ( randomfloatrange( 0 - diffAimAmount, diffAimAmount ),
-						randomfloatrange( 0 - diffAimAmount, diffAimAmount ),
-						randomfloatrange( 0 - diffAimAmount, diffAimAmount ) );
+			obj.aim_offset_base = ( randomfloatrange( 0 - diffAimAmount * errScale, diffAimAmount * errScale ),
+						randomfloatrange( 0 - diffAimAmount * errScale, diffAimAmount * errScale ),
+						randomfloatrange( 0 - diffAimAmount * errScale, diffAimAmount * 0.7 ) );
 		}
 		else
 		{
@@ -992,6 +1141,102 @@ updateAimOffset( obj )
 	}
 	
 	obj.aim_offset = obj.aim_offset_base * offsetScalar;
+}
+
+/*
+	Computes contextual reaction time (ms) for a newly seen target.
+	Base init_react_time is the mean; modifiers make it human:
+	surprise (wide angle, long range, crouched still target) = slower,
+	alert cues (muzzle flash, movement, damage from them, pre-aimed) = faster.
+*/
+getEffectiveReaction( ent, daDist, conedot, isScriptObj )
+{
+	base = self.pers[ "bots" ][ "skill" ][ "init_react_time" ];
+
+	if ( isScriptObj )
+	{
+		return base;
+	}
+
+	react = base;
+
+	// Surprise: far off-center targets take longer to notice.
+	if ( conedot < 0.98 )
+	{
+		react += int( ( 0.98 - conedot ) * 1200 );
+	}
+
+	// Distance: humans spot close movement fast, far still targets slow.
+	if ( daDist > 1500 * 1500 )
+	{
+		react += 150;
+	}
+
+	if ( daDist > 3000 * 3000 )
+	{
+		react += 250;
+	}
+
+	// Alert cues: firing or sprinting targets pop out (muzzle + sound + motion).
+	if ( isdefined( ent.bots_firing ) && ent.bots_firing )
+	{
+		react -= 200;
+	}
+
+	if ( isplayer( ent ) )
+	{
+		evel = lengthsquared( ent getvelocity() );
+		if ( evel > 120 * 120 )
+		{
+			react -= 120;
+		}
+
+		// Crouched still targets blend in.
+		if ( evel < 20 * 20 && ent getstance() == "crouch" )
+		{
+			react += 150;
+		}
+	}
+
+	// Self state: distracted while sprinting, reloading, or right after taking damage.
+	if ( self.bot.issprinting )
+	{
+		react += 150;
+	}
+
+	if ( self.bot.isreloading )
+	{
+		react += 200;
+	}
+
+	if ( gettime() - self.bot.last_damage_time < 400 )
+	{
+		react += 120;
+	}
+
+	// Pre-aim bonus: already looking at the lane means much faster shot.
+	if ( conedot > 0.995 )
+	{
+		react -= 120;
+	}
+
+	// Per-engagement jitter so reactions form a distribution, not a spike.
+	react += randomintrange( 0 - 90, 90 );
+
+	// Human floor: ~150ms when the target appears where we were already
+	// looking (anticipation), ~180ms otherwise.
+	reactFloor = 180;
+	if ( conedot > 0.995 )
+	{
+		reactFloor = 150;
+	}
+
+	if ( react < reactFloor )
+	{
+		react = reactFloor;
+	}
+
+	return react;
 }
 
 /*
@@ -1026,6 +1271,36 @@ targetObjUpdateTraced( obj, daDist, ent, theTime, isScriptObj )
 	obj.dist = daDist;
 	obj.last_seen_pos = ent.origin;
 	obj.trace_time_time = theTime;
+	obj.confirm_count += 1;
+
+	if ( isplayer( ent ) )
+	{
+		obj.last_vel = ent getvelocity();
+
+		// Danger score: who would a human prioritize?
+		danger = 0;
+		if ( isdefined( ent.bots_firing ) && ent.bots_firing )
+		{
+			danger += 3;
+		}
+		if ( daDist < 500 * 500 )
+		{
+			danger += 3;
+		}
+		else if ( daDist < 1000 * 1000 )
+		{
+			danger += 1;
+		}
+		if ( isdefined( self.bot.last_damage_attacker ) && self.bot.last_damage_attacker == ent && gettime() - self.bot.last_damage_time < 3000 )
+		{
+			danger += 2;
+		}
+		if ( isdefined( ent.isbombcarrier ) && ent.isbombcarrier )
+		{
+			danger += 1;
+		}
+		obj.danger = danger;
+	}
 	
 	self updateAimOffset( obj );
 }
@@ -1038,6 +1313,9 @@ targetObjUpdateNoTrace( obj )
 	obj.no_trace_time += 50;
 	obj.trace_time = 0;
 	obj.didlook = false;
+	obj.confirm_count = 0;
+	// last_seen_pos stays frozen: humans hold the angle where they lost you,
+	// they don't track you through walls.
 }
 
 /*
@@ -1068,6 +1346,7 @@ target_loop()
 	myFov = self.pers[ "bots" ][ "skill" ][ "fov" ];
 	bestTargets = [];
 	bestTime = 2147483647;
+	bestScore = 2147483647;
 	rememberTime = self.pers[ "bots" ][ "skill" ][ "remember_time" ];
 	initReactTime = self.pers[ "bots" ][ "skill" ][ "init_react_time" ];
 	hasTarget = isdefined( self.bot.target );
@@ -1175,8 +1454,20 @@ target_loop()
 					&& ( SmokeTrace( myEye, player.origin, level.smokeradius ) ||
 						daDist < level.bots_maxknifedistance * 4 )
 						
-					&& ( getConeDot( player.origin, self.origin, myAngles ) >= myFov ||
-						( isObjDef && obj.trace_time ) ) );
+					 );
+
+			rawCone = getConeDot( player.origin, self.origin, myAngles );
+			effFov = myFov;
+			if ( isdefined( player.bots_firing ) && player.bots_firing )
+			{
+				effFov -= self.pers[ "bots" ][ "skill" ][ "periph_bonus" ];
+			}
+			else if ( lengthsquared( player getvelocity() ) > 150 * 150 )
+			{
+				effFov -= self.pers[ "bots" ][ "skill" ][ "periph_bonus" ] * 0.7;
+			}
+
+			canTargetPlayer = canTargetPlayer && ( rawCone >= effFov || ( isObjDef && obj.trace_time ) );
 						
 			if ( isdefined( self.bot.target_this_frame ) && self.bot.target_this_frame == player )
 			{
@@ -1190,6 +1481,7 @@ target_loop()
 				if ( !isObjDef )
 				{
 					obj = self createTargetObj( player, theTime );
+					obj.react_required = self getEffectiveReaction( player, daDist, rawCone, false );
 					
 					self.bot.targets[ key ] = obj;
 				}
@@ -1218,46 +1510,91 @@ target_loop()
 			continue;
 		}
 		
-		if ( theTime - obj.time < initReactTime )
+		reactNeed = initReactTime;
+		if ( isdefined( obj.react_required ) && obj.react_required >= 0 )
+		{
+			reactNeed = obj.react_required;
+		}
+
+		if ( theTime - obj.time < reactNeed )
 		{
 			continue;
 		}
-		
+
+		// Trigger discipline: require 2 consecutive visible frames (100ms)
+		// so edge flicker does not cause instant snaps. Knifing range exempt.
+		minConfirm = 2;
+		if ( isdefined( obj.dist ) && obj.dist < level.bots_maxknifedistance * 4 )
+		{
+			minConfirm = 1;
+		}
+
+		isCurTarget = hasTarget && isdefined( self.bot.target.entity ) && isdefined( obj.entity ) && obj.entity == self.bot.target.entity;
+
+		if ( !isCurTarget && obj.confirm_count < minConfirm )
+		{
+			continue;
+		}
+
+		// Threat scoring: lower wins. Recency - danger bonus + distance penalty.
+		// Humans prioritize shooters, close threats, and recent attackers.
 		timeDiff = theTime - obj.trace_time_time;
-		
-		if ( timeDiff < bestTime )
+		dangerBonus = 0;
+		if ( isdefined( obj.danger ) )
+		{
+			dangerBonus = obj.danger * 700;
+		}
+		distPenalty = 0;
+		if ( isdefined( obj.dist ) )
+		{
+			distPenalty = int( obj.dist / 500000 );
+		}
+		score = timeDiff - dangerBonus + distPenalty;
+
+		// Stickiness: current target keeps a small advantage, prevents flicker.
+		if ( hasTarget && isdefined( self.bot.target.entity ) && isdefined( obj.entity ) && obj.entity == self.bot.target.entity )
+		{
+			score -= 300;
+		}
+
+		if ( !isdefined( bestScore ) || score < bestScore )
 		{
 			bestTargets = [];
+			bestScore = score;
 			bestTime = timeDiff;
 		}
-		
-		if ( timeDiff == bestTime )
+
+		if ( score == bestScore )
 		{
 			bestTargets[ key ] = obj;
 		}
 	}
 	
-	if ( hasTarget && isdefined( bestTargets[ self.bot.target.entity getentitynumber() + "" ] ) )
+	if ( hasTarget && isdefined( self.bot.target ) && isdefined( self.bot.target.entity ) && isdefined( bestTargets[ self.bot.target.entity getentitynumber() + "" ] ) )
 	{
 		return;
 	}
 	
-	closest = 2147483647;
+	bestDanger = -1;
 	toBeTarget = undefined;
-	
+
 	bestKeys = getarraykeys( bestTargets );
-	
+
 	for ( i = bestKeys.size - 1; i >= 0; i-- )
 	{
-		theDist = bestTargets[ bestKeys[ i ] ].dist;
-		
-		if ( theDist > closest )
+		cand = bestTargets[ bestKeys[ i ] ];
+		candDanger = 0;
+		if ( isdefined( cand.danger ) )
 		{
-			continue;
+			candDanger = cand.danger;
 		}
-		
-		closest = theDist;
-		toBeTarget = bestTargets[ bestKeys[ i ] ];
+
+		// Among tied scores prefer higher danger, then closer.
+		if ( !isdefined( toBeTarget ) || candDanger > bestDanger || ( candDanger == bestDanger && cand.dist < toBeTarget.dist ) )
+		{
+			toBeTarget = cand;
+			bestDanger = candDanger;
+		}
 	}
 	
 	beforeTargetID = -1;
@@ -1275,8 +1612,38 @@ target_loop()
 	
 	if ( beforeTargetID != newTargetID )
 	{
-		self.bot.target = toBeTarget;
-		self notify( "new_enemy" );
+		switchPenalty = self.pers[ "bots" ][ "skill" ][ "switch_penalty" ];
+
+		// Humans cannot snap-swap instantly. Enforce a small cost unless
+		// the new target is obviously more dangerous or old target is lost.
+		canSwitch = true;
+		if ( hasTarget && isdefined( self.bot.target ) && theTime - self.bot.target_switch_time < switchPenalty )
+		{
+			oldDanger = 0;
+			newDanger = 0;
+			if ( isdefined( self.bot.target.danger ) )
+			{
+				oldDanger = self.bot.target.danger;
+			}
+			if ( isdefined( toBeTarget ) && isdefined( toBeTarget.danger ) )
+			{
+				newDanger = toBeTarget.danger;
+			}
+			oldLost = isdefined( self.bot.target.no_trace_time ) && self.bot.target.no_trace_time > 0;
+
+			if ( !oldLost && newDanger < oldDanger + 3 )
+			{
+				canSwitch = false;
+			}
+		}
+
+		if ( canSwitch )
+		{
+			self.bot.target = toBeTarget;
+			self.bot.target_switch_time = theTime;
+			self.bot.aim_vel_seen = ( 0, 0, 0 );
+			self notify( "new_enemy" );
+		}
 	}
 }
 
@@ -1316,6 +1683,18 @@ onNewEnemy()
 		if ( !isdefined( self.bot.target ) )
 		{
 			continue;
+		}
+		
+		// humans crouch 18% of firing time and jump-shoot now and then
+		roll = randomint( 100 );
+		
+		if ( roll < 25 && self getstance() == "stand" )
+		{
+			self thread botFightCrouch();
+		}
+		else if ( roll < 30 )
+		{
+			self thread jump();
 		}
 		
 		if ( !isdefined( self.bot.target.entity ) || !isplayer( self.bot.target.entity ) )
@@ -1609,7 +1988,7 @@ aim_loop()
 					}
 					else if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
 					{
-						self thread bot_lookat( aimpos, 0.05 );
+						self thread bot_lookat( aimpos, aimspeed );
 					}
 					else
 					{
@@ -1627,7 +2006,7 @@ aim_loop()
 					
 					if ( !nadeAimOffset && conedot > 0.999995 && lengthsquared( aimoffset ) < 0.05 )
 					{
-						self thread bot_lookat( aimpos, 0.05 );
+						self thread bot_lookat( aimpos, aimspeed );
 					}
 					else
 					{
@@ -1635,7 +2014,9 @@ aim_loop()
 					}
 				}
 				
-				if ( isplay && !self.bot.isknifingafter && conedot > 0.9 && dist < level.bots_maxknifedistance && trace_time > reaction_time && getdvarint( "bots_play_knife" ) )
+				wantKnife = self.bot.target.knife_pref || self.bot.isreloading || !self canFire( curweap );
+				
+				if ( isplay && wantKnife && !self.bot.isknifingafter && conedot > 0.9 && dist < level.bots_maxknifedistance && trace_time > reaction_time && getdvarint( "bots_play_knife" ) )
 				{
 					self clear_bot_after_target();
 					self thread knife( target );
@@ -1671,10 +2052,22 @@ aim_loop()
 					}
 				}
 				
-				if ( trace_time > reaction_time )
+				effReaction = reaction_time;
+				if ( isdefined( self.pers[ "bots" ][ "skill" ][ "trigger_delay" ] ) )
 				{
-					if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > 0.99 || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
+					effReaction += self.pers[ "bots" ][ "skill" ][ "trigger_delay" ];
+				}
+				// Moving targets: humans under-lead strafers, need extra settle time.
+				if ( isplay && lengthsquared( target getvelocity() ) > 200 * 200 && dist > 1000 * 1000 )
+				{
+					effReaction += 120;
+				}
+
+				if ( trace_time > effReaction )
+				{
+					if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > 0.985 || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
 					{
+						self.bot.aim_fired_time = gettime();
 						self botFire();
 					}
 					
@@ -1747,13 +2140,14 @@ aim_loop()
 		
 		if ( ( !canADS || adsAmount >= 1.0 || self inLastStand() || self getstance() == "prone" ) && ( conedot > 0.95 || dist < level.bots_maxknifedistance ) && getdvarint( "bots_play_fire" ) )
 		{
+			self.bot.aim_fired_time = gettime();
 			self botFire();
 		}
 		
 		return;
 	}
 	
-	if ( self.bot.next_wp != -1 && isdefined( level.waypoints[ self.bot.next_wp ].angles ) && false )
+	if ( self.bot.next_wp != -1 && self.bot.next_wp >= 0 && self.bot.next_wp < level.waypoints.size && isdefined( level.waypoints[ self.bot.next_wp ].angles ) )
 	{
 		forwardPos = anglestoforward( level.waypoints[ self.bot.next_wp ].angles ) * 1024;
 		
@@ -1767,7 +2161,7 @@ aim_loop()
 	{
 		lookat = undefined;
 		
-		if ( self.bot.second_next_wp != -1 && !self.bot.issprinting && !self.bot.climbing )
+		if ( self.bot.second_next_wp != -1 && self.bot.second_next_wp >= 0 && self.bot.second_next_wp < level.waypoints.size && !self.bot.issprinting && !self.bot.climbing && isdefined( level.waypoints[ self.bot.second_next_wp ] ) )
 		{
 			lookat = level.waypoints[ self.bot.second_next_wp ].origin;
 		}
@@ -1776,11 +2170,852 @@ aim_loop()
 			lookat = self.bot.towards_goal;
 		}
 		
-		if ( isdefined( lookat ) )
+		glance = self getIdleGlance();
+		
+		if ( isdefined( glance ) )
+		{
+			self thread bot_lookat( glance, aimspeed );
+		}
+		else if ( isdefined( lookat ) )
 		{
 			self thread bot_lookat( lookat + ( 0, 0, self getEyeHeight() ), aimspeed );
 		}
 	}
+}
+
+/*
+	Human movement rhythm, learned from demos (_bot_motor_data.gsc): outside of
+	fights and objective actions, cycle through sprint / run / ads_walk /
+	crouch_walk / still_stand / still_crouch / prone with the real dwell times
+	and transition odds of the matching mode (sd or respawn).
+*/
+motorController()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	level endon( "game_ended" );
+	
+	profile = "respawn";
+	
+	if ( level.gametype == "sd" )
+	{
+		profile = "sd";
+	}
+	
+	self.bot.motor_state = "run";
+	self.bot.motor_stance = undefined;
+	self.bot.motor_pause_until = 0;
+	
+	for ( ;; )
+	{
+		if ( !getdvarint( "bots_motor_model" ) || !self motorActive() )
+		{
+			self motorRelease();
+			self.bot.motor_state = "run";
+			wait 0.25;
+			continue;
+		}
+		
+		cur = self.bot.motor_state;
+		
+		// people stop at corners and cover, not in the middle of open ground
+		if ( ( cur == "still_stand" || cur == "still_crouch" || cur == "prone" ) && !self botNearCover() )
+		{
+			cur = "run";
+			self.bot.motor_state = cur;
+		}
+		
+		dwell = self motorDwell( profile, cur );
+		self motorApply( cur, dwell );
+		
+		// stop early when a fight starts; combat owns movement then
+		for ( t = 0; t < dwell && self motorActive(); t += 0.05 )
+		{
+			moving = lengthsquared( self getvelocity() ) > 100 * 100;
+			
+			// sprints start once we're actually moving along the path
+			if ( cur == "sprint" && moving && !self.bot.issprinting && !self.bot.isreloading )
+			{
+				self thread sprint();
+				self thread setBotWantSprint();
+			}
+			
+			// humans jump ~5.5/min in S&D (hops, jump-peeks, over clutter)
+			if ( ( cur == "sprint" || cur == "run" ) && moving && randomint( 1000 ) < 9 )
+			{
+				self thread jump();
+			}
+			
+			wait 0.05;
+		}
+		
+		self motorRelease();
+		self.bot.motor_state = self botMotorContext( self motorNext( profile, cur ) );
+	}
+}
+
+/*
+	True next to cover (a wall within 80u to the side, behind or ahead) or at a
+	path corner (next waypoint within 64u).
+*/
+botNearCover()
+{
+	if ( self.bot.next_wp != -1 && self.bot.next_wp >= 0 && self.bot.next_wp < level.waypoints.size && distancesquared( self.origin, level.waypoints[ self.bot.next_wp ].origin ) < 64 * 64 )
+	{
+		return true;
+	}
+	
+	start = self.origin + ( 0, 0, 40 );
+	angles = self getplayerangles();
+	yaw = angles[ 1 ];
+	
+	for ( i = 0; i < 4; i++ )
+	{
+		if ( !bullettracepassed( start, start + anglestoforward( ( 0, yaw + i * 90, 0 ) ) * 80, false, self ) )
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+/*
+	Context bias on the next motor state (human demo lifts): under threat
+	(heard shots / recent fight nearby) people ADS and crouch more and sprint
+	less; when calm they sprint freely.
+*/
+botMotorContext( next )
+{
+	threat = isdefined( self bot_recent_shot( 3000, 2000 ) ) || isdefined( bot_pick_fight_spot_near( self.origin, 1200 ) );
+	
+	if ( threat )
+	{
+		if ( ( next == "run" || next == "sprint" ) && randomint( 100 ) < 35 )
+		{
+			return "ads_walk";
+		}
+		
+		if ( next == "still_stand" && randomint( 100 ) < 30 )
+		{
+			return "still_crouch";
+		}
+	}
+	else if ( next == "run" && randomint( 100 ) < 30 )
+	{
+		return "sprint";
+	}
+	
+	return next;
+}
+
+/*
+	A teammate went down nearby: freeze, maybe crouch, and look toward where
+	the shots came from (with error; the killfeed and sound give a rough idea).
+*/
+botMateDown( deathPos, threatPos )
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	wait randomfloatrange( 0.2, 0.5 );
+	
+	if ( isdefined( self.bot.target ) || randomint( 100 ) >= 75 )
+	{
+		return;
+	}
+	
+	look = deathPos;
+	
+	if ( isdefined( threatPos ) )
+	{
+		err = distance( self.origin, threatPos ) * 0.2;
+		look = threatPos + ( randomfloatrange( 0 - err, err ), randomfloatrange( 0 - err, err ), 0 );
+	}
+	
+	dur = randomfloatrange( 1.2, 3.0 );
+	self BotTelemetryEvent( "mate_down" );
+	self.bot.motor_pause_until = gettime() + int( dur * 1000 );
+	self.bot.glance_pos = look + ( 0, 0, 50 );
+	self.bot.glance_until = gettime() + int( dur * 1000 );
+	self.bot.glance_next = self.bot.glance_until;
+	
+	if ( randomint( 100 ) < 35 && self getstance() == "stand" )
+	{
+		self crouch();
+		wait dur;
+		
+		if ( !isdefined( self.bot.target ) )
+		{
+			self stand();
+		}
+	}
+}
+
+/*
+	The motor model runs when not fighting, climbing or doing an objective action.
+*/
+motorActive()
+{
+	if ( isdefined( self.bot.target ) || self.bot.climbing || self.bot.isfrozen )
+	{
+		return false;
+	}
+	
+	if ( self isDefusing() || self isPlanting() || self inLastStand() )
+	{
+		return false;
+	}
+	
+	return true;
+}
+
+/*
+	True while a motor stop state holds the bot in place.
+*/
+motorPaused()
+{
+	return getdvarint( "bots_motor_model" ) && gettime() < self.bot.motor_pause_until && !isdefined( self.bot.target );
+}
+
+/*
+	Starts a motor state.
+*/
+motorApply( state, dwell )
+{
+	self.bot.motor_stance = undefined;
+	
+	switch ( state )
+	{
+		case "ads_walk":
+			self thread pressADS( dwell );
+			break;
+			
+		case "crouch_walk":
+			self.bot.motor_stance = "crouch";
+			self crouch();
+			break;
+			
+		case "still_stand":
+			self.bot.motor_pause_until = gettime() + int( dwell * 1000 );
+			break;
+			
+		case "still_crouch":
+			self.bot.motor_stance = "crouch";
+			self crouch();
+			self.bot.motor_pause_until = gettime() + int( dwell * 1000 );
+			break;
+			
+		case "prone":
+			self.bot.motor_stance = "prone";
+			self prone();
+			self.bot.motor_pause_until = gettime() + int( dwell * 1000 );
+			break;
+	}
+}
+
+/*
+	Ends the current motor state's effects.
+*/
+motorRelease()
+{
+	self.bot.motor_pause_until = 0;
+	
+	if ( isdefined( self.bot.motor_stance ) )
+	{
+		self.bot.motor_stance = undefined;
+		self stand();
+	}
+}
+
+/*
+	Drops to a knee for the fight, stands back up when it's over.
+*/
+botFightCrouch()
+{
+	self endon( "disconnect" );
+	self endon( "death" );
+	
+	wait randomfloatrange( 0.1, 0.4 );
+	self crouch();
+	
+	while ( isdefined( self.bot.target ) )
+	{
+		wait 0.25;
+	}
+	
+	wait randomfloatrange( 0.3, 1.0 );
+	self stand();
+}
+
+/*
+	Uniform pick from a comma list of values, jittered +-15% (empirical sampling).
+*/
+botSampleList( list )
+{
+	v = strtok( list, "," );
+	return float_old( v[ randomint( v.size ) ] ) * randomfloatrange( 0.85, 1.15 );
+}
+
+/*
+	Samples a dwell time (s) from the human decile table: pick a decile band and
+	interpolate inside it; the top band stretches out to cover the long tail.
+*/
+motorDwell( profile, state )
+{
+	data = maps\mp\bots\_bot_motor_data::motor_data( profile + "_" + state + "_dwell" );
+	
+	if ( !isdefined( data ) )
+	{
+		return 0.5;
+	}
+	
+	d = strtok( data, "," );
+	i = randomint( d.size + 1 );
+	
+	if ( i == 0 )
+	{
+		lo = float_old( d[ 0 ] ) * 0.5;
+		hi = float_old( d[ 0 ] );
+	}
+	else if ( i == d.size )
+	{
+		lo = float_old( d[ d.size - 1 ] );
+		hi = lo * 2.5;
+	}
+	else
+	{
+		lo = float_old( d[ i - 1 ] );
+		hi = float_old( d[ i ] );
+	}
+	
+	v = randomfloatrange( lo, hi + 0.01 );
+	
+	if ( v < 0.1 )
+	{
+		v = 0.1;
+	}
+	
+	return v;
+}
+
+/*
+	Next motor state from the human transition weights.
+*/
+motorNext( profile, state )
+{
+	data = maps\mp\bots\_bot_motor_data::motor_data( profile + "_" + state + "_next" );
+	
+	if ( !isdefined( data ) )
+	{
+		return "run";
+	}
+	
+	entries = strtok( data, "," );
+	total = 0;
+	
+	for ( i = 0; i < entries.size; i++ )
+	{
+		parts = strtok( entries[ i ], ":" );
+		total += int( parts[ 1 ] );
+	}
+	
+	roll = randomint( total );
+	
+	for ( i = 0; i < entries.size; i++ )
+	{
+		parts = strtok( entries[ i ], ":" );
+		w = int( parts[ 1 ] );
+		
+		if ( roll < w )
+		{
+			return parts[ 0 ];
+		}
+		
+		roll -= w;
+	}
+	
+	return "run";
+}
+
+/*
+	% chance to hold after reaching a roam goal: mode profile, then persona
+	(campers hold nearly always, mobile players less).
+*/
+botHoldChance()
+{
+	chance = bot_mode_value( "hold_chance" );
+	persona = self.pers[ "bots" ][ "persona" ];
+	
+	if ( isdefined( persona ) && persona == "anchor" )
+	{
+		chance += 30;
+	}
+	else if ( isdefined( persona ) && persona == "rusher" )
+	{
+		chance *= 0.6;
+	}
+	
+	return chance;
+}
+
+/*
+	Stop and hold an angle: face the most useful lane (where fighting was, else
+	the longest open sightline), crouch/prone/ADS per mode, and wait until the
+	time is up or an enemy shows up.
+*/
+botHoldPosition()
+{
+	minMs = bot_mode_value( "hold_min_ms" );
+	maxMs = bot_mode_value( "hold_max_ms" );
+	prone = bot_mode_value( "hold_prone" );
+	persona = self.pers[ "bots" ][ "persona" ];
+	
+	if ( isdefined( persona ) && persona == "anchor" )
+	{
+		maxMs *= 2.5;
+		prone += 25;
+	}
+	else if ( isdefined( persona ) && persona == "rusher" )
+	{
+		minMs *= 0.6;
+		maxMs *= 0.6;
+	}
+	
+	dur = randomintrange( int( minMs ), int( maxMs ) ) / 1000;
+	
+	lane = undefined;
+	
+	if ( randomint( 100 ) < 50 )
+	{
+		spot = self bot_pick_fight_spot( 300, 3000 );
+		
+		if ( isdefined( spot ) && bullettracepassed( self getEyePos(), spot + ( 0, 0, 40 ), false, self ) )
+		{
+			lane = spot + ( 0, 0, 40 );
+		}
+	}
+	
+	if ( !isdefined( lane ) )
+	{
+		lane = self botOpenLane();
+	}
+	
+	self.bot.glance_pos = lane;
+	self.bot.glance_until = gettime() + int( dur * 1000 );
+	self.bot.glance_next = self.bot.glance_until;
+	
+	roll = randomint( 100 );
+	
+	if ( roll < prone )
+	{
+		self prone();
+	}
+	else if ( roll < prone + bot_mode_value( "hold_crouch" ) )
+	{
+		self crouch();
+	}
+	
+	// ADS only when watching a real sightline, where someone could appear
+	if ( distancesquared( self getEyePos(), lane ) > 700 * 700 && randomint( 100 ) < bot_mode_value( "hold_ads" ) )
+	{
+		self thread pressADS( dur );
+	}
+	
+	self botSetMoveTo( self.origin );
+	self BotTelemetryEvent( "hold" );
+	self waittill_notify_or_timeout( "new_enemy", dur );
+	self stand();
+}
+
+/*
+	True if the view is not blocked within dist units (not staring at a wall).
+*/
+botViewIsOpen( dist )
+{
+	eye = self getEyePos();
+	return bullettracepassed( eye, eye + anglestoforward( self getplayerangles() ) * dist, false, self );
+}
+
+/*
+	The farthest open sightline from here (6 random directions).
+*/
+botOpenLane()
+{
+	eye = self getEyePos();
+	best = -1;
+	lane = eye + anglestoforward( self getplayerangles() ) * 500;
+	
+	for ( i = 0; i < 6; i++ )
+	{
+		trace = bullettrace( eye, eye + anglestoforward( ( 0, randomint( 360 ), 0 ) ) * 3000, false, self );
+		d = distancesquared( eye, trace[ "position" ] );
+		
+		if ( d > best )
+		{
+			best = d;
+			lane = trace[ "position" ];
+		}
+	}
+	
+	return lane;
+}
+
+/*
+	Where to roam when there is no objective/script goal. People head toward
+	the fighting (stopping short to take a look), otherwise patrol nearby lanes
+	and only sometimes rotate across the map.
+*/
+pickRoamGoal()
+{
+	// heard a fight: many players go toward it (humans are near enemies 39% of
+	// the time vs our bots' 16%); stop short and approach
+	shot = self bot_recent_shot( 5000, 2500 );
+	
+	if ( isdefined( shot ) )
+	{
+		chance = 45;
+		persona = self.pers[ "bots" ][ "persona" ];
+		
+		if ( isdefined( persona ) && persona == "rusher" )
+		{
+			chance = 70;
+		}
+		else if ( isdefined( persona ) && persona == "anchor" )
+		{
+			chance = 15;
+		}
+		
+		if ( randomint( 100 ) < chance && distancesquared( self.origin, shot ) > 400 * 400 )
+		{
+			wp = getNearestWaypoint( shot - vectornormalize( shot - self.origin ) * randomintrange( 300, 600 ) );
+			
+			if ( isdefined( wp ) )
+			{
+				self BotTelemetryEvent( "roam:sound" );
+				return level.waypoints[ wp ].origin;
+			}
+		}
+	}
+	
+	// real human positions for this map/side/round phase, when we have demo data
+	humanGoal = self botMapGoal();
+	
+	if ( isdefined( humanGoal ) )
+	{
+		return humanGoal;
+	}
+	
+	chance = 50;
+	
+	if ( isdefined( self.pers[ "bots" ][ "persona" ] ) )
+	{
+		switch ( self.pers[ "bots" ][ "persona" ] )
+		{
+			case "rusher":
+				chance = 75;
+				break;
+				
+			case "support":
+				chance = 55;
+				break;
+				
+			case "objective":
+				chance = 45;
+				break;
+				
+			case "anchor":
+				chance = 30;
+				break;
+		}
+	}
+	
+	if ( randomint( 100 ) < chance )
+	{
+		spot = self bot_pick_fight_spot( 500, 4000 );
+		
+		if ( isdefined( spot ) )
+		{
+			approach = spot - vectornormalize( spot - self.origin ) * randomintrange( 250, 700 );
+			wp = getNearestWaypoint( approach );
+			
+			if ( isdefined( wp ) )
+			{
+				self BotTelemetryEvent( "roam:fight" );
+				return level.waypoints[ wp ].origin;
+			}
+		}
+	}
+	
+	goal = level.waypoints[ randomint( level.waypoints.size ) ].origin;
+	
+	if ( randomint( 100 ) < 70 )
+	{
+		for ( tries = 0; tries < 6; tries++ )
+		{
+			cand = level.waypoints[ randomint( level.waypoints.size ) ].origin;
+			candDist = distancesquared( self.origin, cand );
+			
+			if ( candDist > 400 * 400 && candDist < 2000 * 2000 )
+			{
+				self BotTelemetryEvent( "roam:patrol" );
+				return cand;
+			}
+		}
+	}
+	
+	self BotTelemetryEvent( "roam:rotate" );
+	return goal;
+}
+
+/*
+	Picks a destination from where humans actually spent time on this map
+	(_bot_map_data.gsc, learned from demos): for S&D by spawn side and round
+	phase. Weighted by human time, preferring spots 250-3000u away. Remembers
+	the view direction humans used there for when we stop.
+*/
+botMapGoal()
+{
+	mapname = getdvar( "mapname" );
+	side = "any";
+	phase = 0;
+	
+	if ( level.gametype == "sd" )
+	{
+		sides = maps\mp\bots\_bot_map_data::map_data( mapname + "_sides" );
+		
+		if ( !isdefined( sides ) || !isdefined( self.bot.spawn_origin ) )
+		{
+			return undefined;
+		}
+		
+		c = strtok( sides, ";" );
+		a = strtok( c[ 0 ], " " );
+		b = strtok( c[ 1 ], " " );
+		posA = ( float_old( a[ 0 ] ), float_old( a[ 1 ] ), float_old( a[ 2 ] ) );
+		posB = ( float_old( b[ 0 ] ), float_old( b[ 1 ] ), float_old( b[ 2 ] ) );
+		side = "B";
+		
+		if ( distancesquared( self.bot.spawn_origin, posA ) <= distancesquared( self.bot.spawn_origin, posB ) )
+		{
+			side = "A";
+		}
+		
+		elapsed = ( gettime() - self.bot.spawn_time ) / 1000;
+		
+		if ( elapsed >= 60 )
+		{
+			phase = 2;
+		}
+		else if ( elapsed >= 25 )
+		{
+			phase = 1;
+		}
+	}
+	
+	data = maps\mp\bots\_bot_map_data::map_data( mapname + "_" + side + "_" + phase );
+	
+	if ( !isdefined( data ) )
+	{
+		return undefined;
+	}
+	
+	cells = strtok( data, ";" );
+	total = 0;
+	
+	for ( i = 0; i < cells.size; i++ )
+	{
+		f = strtok( cells[ i ], " " );
+		total += int( f[ 3 ] );
+	}
+	
+	for ( tries = 0; tries < 8; tries++ )
+	{
+		roll = randomint( total );
+		
+		for ( i = 0; i < cells.size; i++ )
+		{
+			f = strtok( cells[ i ], " " );
+			w = int( f[ 3 ] );
+			
+			if ( roll >= w )
+			{
+				roll -= w;
+				continue;
+			}
+			
+			pos = ( float_old( f[ 0 ] ), float_old( f[ 1 ] ), float_old( f[ 2 ] ) );
+			d = distancesquared( self.origin, pos );
+			
+			if ( d < 250 * 250 || d > 3000 * 3000 )
+			{
+				break;
+			}
+			
+			// don't head back into our own spawn
+			if ( isdefined( self.bot.spawn_origin ) && distancesquared( pos, self.bot.spawn_origin ) < 800 * 800 )
+			{
+				break;
+			}
+			
+			wp = getNearestWaypoint( pos );
+			
+			if ( !isdefined( wp ) )
+			{
+				break;
+			}
+			
+			self.bot.goal_view_yaw = undefined;
+			
+			if ( int( f[ 5 ] ) >= 30 )
+			{
+				self.bot.goal_view_yaw = float_old( f[ 4 ] );
+			}
+			
+			self.bot.goal_cell = pos;
+			self BotTelemetryEvent( "roam:human" );
+			return level.waypoints[ wp ].origin;
+		}
+	}
+	
+	return undefined;
+}
+
+/*
+	Idle look-around: people keep checking lanes, corners, where the fight is,
+	and now and then behind them. Returns a point to look at while a glance
+	lasts, else undefined (look down the path). No glances while sprinting.
+*/
+getIdleGlance()
+{
+	now = gettime();
+	
+	if ( self.bot.issprinting || self.bot.climbing )
+	{
+		self.bot.glance_until = 0;
+		return undefined;
+	}
+	
+	// heard enemy gunfire: turn toward it (direction error grows with distance)
+	heard = self bot_heard_shot();
+	
+	if ( isdefined( heard ) && ( !isdefined( self.bot.heard_until ) || now > self.bot.heard_until ) )
+	{
+		err = distance( self.origin, heard ) * 0.15;
+		self.bot.glance_pos = heard + ( randomfloatrange( 0 - err, err ), randomfloatrange( 0 - err, err ), 40 );
+		self.bot.glance_until = now + randomintrange( 1200, 2500 );
+		self.bot.glance_next = self.bot.glance_until;
+		self.bot.heard_until = self.bot.glance_until;
+		return self.bot.glance_pos;
+	}
+	
+	if ( now < self.bot.glance_until && isdefined( self.bot.glance_pos ) )
+	{
+		return self.bot.glance_pos;
+	}
+	
+	if ( now < self.bot.glance_next )
+	{
+		return undefined;
+	}
+	
+	// at a human hold spot: mostly watch the way humans watched from there
+	if ( isdefined( self.bot.goal_view_yaw ) && isdefined( self.bot.goal_cell ) && distancesquared( self.origin, self.bot.goal_cell ) < 200 * 200 && randomint( 100 ) < 70 )
+	{
+		self.bot.glance_next = now + randomintrange( 2500, 7000 );
+		self.bot.glance_pos = self getEyePos() + anglestoforward( ( 0, self.bot.goal_view_yaw, 0 ) ) * 1000;
+		self.bot.glance_until = now + randomintrange( 1500, 4000 );
+		return self.bot.glance_pos;
+	}
+	
+	// humans: ~3.7 quick look-arounds a minute (demo baseline); was every 1-2.5s
+	self.bot.glance_next = now + randomintrange( 2500, 7000 );
+	self.bot.glance_pos = undefined;
+	eye = self getEyePos();
+	angles = self getplayerangles();
+	yaw = angles[ 1 ];
+	vel = self getvelocity();
+	
+	if ( lengthsquared( vel ) > 50 * 50 )
+	{
+		velAngles = vectortoangles( vel );
+		yaw = velAngles[ 1 ];
+	}
+	
+	roll = randomint( 100 );
+	
+	if ( roll < 55 )
+	{
+		return undefined; // keep eyes on the path
+	}
+	
+	if ( roll < 80 )
+	{
+		// most open lane off to one side
+		best = -1;
+		
+		for ( i = 0; i < 4; i++ )
+		{
+			side = 1;
+			
+			if ( randomint( 2 ) )
+			{
+				side = -1;
+			}
+			
+			dir = anglestoforward( ( 0, yaw + side * randomintrange( 35, 80 ), 0 ) );
+			trace = bullettrace( eye, eye + dir * 2000, false, self );
+			d = distancesquared( eye, trace[ "position" ] );
+			
+			if ( d > best )
+			{
+				best = d;
+				self.bot.glance_pos = trace[ "position" ];
+			}
+		}
+		
+		if ( best < 500 * 500 )
+		{
+			self.bot.glance_pos = undefined; // only walls around; don't stare at them
+		}
+	}
+	else if ( roll < 94 )
+	{
+		spot = self bot_pick_fight_spot( 300, 2500 );
+		
+		// only glance at a fight spot we could actually see, never at a wall
+		if ( isdefined( spot ) && bullettracepassed( eye, spot + ( 0, 0, 40 ), false, self ) )
+		{
+			self.bot.glance_pos = spot + ( 0, 0, 40 );
+		}
+	}
+	else if ( lengthsquared( vel ) < 150 * 150 )
+	{
+		// quick check over the shoulder (not while running: it turns into a backpedal)
+		self.bot.glance_pos = eye + anglestoforward( ( 0, yaw + randomintrange( 150, 210 ), 0 ) ) * 500;
+		self.bot.glance_until = now + randomintrange( 250, 500 );
+		return self.bot.glance_pos;
+	}
+	
+	if ( !isdefined( self.bot.glance_pos ) )
+	{
+		return undefined;
+	}
+	
+	// look at varied heights (windows, rooftops, stairs), not always eye level:
+	// humans' view pitch varies ~2.5x more than ours did
+	self.bot.glance_pos += ( 0, 0, randomintrange( -60, 100 ) * distance( eye, self.bot.glance_pos ) / 1500 );
+	
+	// Travelling people glance and look back ahead; stopped ones hold longer.
+	if ( lengthsquared( vel ) > 150 * 150 )
+	{
+		self.bot.glance_until = now + randomintrange( 300, 700 );
+	}
+	else
+	{
+		self.bot.glance_until = now + randomintrange( 500, 1400 );
+	}
+	return self.bot.glance_pos;
 }
 
 /*
@@ -1814,7 +3049,19 @@ botFire()
 	
 	if ( self.bot.is_cur_full_auto )
 	{
-		self thread pressFire();
+		now = gettime();
+		
+		// hold the trigger for a human-length burst, then pause (NamelessNoobs
+		// demos: bursts median 0.25s, p75 0.7s, p90 1.45s; bots used to tap 1 frame)
+		if ( isdefined( self.bot.burst_until ) && ( now < self.bot.burst_until || now < self.bot.burst_gap_until ) )
+		{
+			return;
+		}
+		
+		dur = botSampleList( "0.05,0.1,0.1,0.15,0.25,0.35,0.5,0.7,1.0,1.45,2.0" );
+		self.bot.burst_until = now + int( dur * 1000 );
+		self.bot.burst_gap_until = self.bot.burst_until + int( botSampleList( "0.15,0.25,0.35,0.5,0.7,0.9,1.2" ) * 1000 );
+		self thread pressFire( dur );
 		return;
 	}
 	
@@ -1965,7 +3212,8 @@ walk_loop()
 				return;
 			}
 			
-			if ( self.bot.target.rand <= self.pers[ "bots" ][ "behavior" ][ "strafe" ] )
+			// humans mostly stand and shoot (moving only 31% of firing time)
+			if ( self.bot.target.rand <= self.pers[ "bots" ][ "behavior" ][ "strafe" ] / 2 )
 			{
 				self strafe( self.bot.target.entity );
 			}
@@ -1978,7 +3226,7 @@ walk_loop()
 	
 	if ( level.waypoints.size )
 	{
-		goal = level.waypoints[ randomint( level.waypoints.size ) ].origin;
+		goal = self pickRoamGoal();
 	}
 	else
 	{
@@ -2037,7 +3285,33 @@ walk_loop()
 		self notify( "new_goal_internal" );
 	}
 	
+	walkStart = gettime();
 	self doWalk( goal, dist, isScriptGoal );
+	
+	// no path / instant failure: pause and rethink instead of re-picking every frame
+	if ( gettime() - walkStart < 300 && !isScriptGoal )
+	{
+		wait randomfloatrange( 0.8, 1.5 );
+	}
+	
+	// Arrival: people often stop and hold an angle for a while (per mode and
+	// persona); otherwise they fidget a little and move on.
+	if ( !getdvarint( "bots_motor_model" ) && !isScriptGoal && !isdefined( self.bot.target ) && randomint( 100 ) < self botHoldChance() )
+	{
+		self botHoldPosition();
+	}
+	else if ( !isScriptGoal && !isdefined( self.bot.target ) && randomint( 100 ) < 25 )
+	{
+		fidgetAngles = self getplayerangles();
+		fidgetSide = anglestoforward( ( 0, fidgetAngles[ 1 ] + 90, 0 ) );
+		if ( randomint( 100 ) < 50 )
+		{
+			fidgetSide = fidgetSide * -1;
+		}
+		self botSetMoveTo( self.origin + fidgetSide * randomintrange( 50, 90 ) );
+		wait randomfloatrange( 0.3, 0.5 );
+	}
+	
 	self.bot.towards_goal = undefined;
 	self.bot.next_wp = -1;
 	self.bot.second_next_wp = -1;
@@ -2087,6 +3361,12 @@ strafe( target )
 	self endon( "kill_goal" );
 	self thread killWalkOnEvents();
 	
+	if ( !isdefined( target ) )
+	{
+		self notify( "kill_goal" );
+		return;
+	}
+	
 	angles = vectortoangles( vectornormalize( target.origin - self.origin ) );
 	anglesLeft = ( 0, angles[ 1 ] + 90, 0 );
 	anglesRight = ( 0, angles[ 1 ] - 90, 0 );
@@ -2098,9 +3378,18 @@ strafe( target )
 	traceLeft = bullettrace( myOrg, left, false, self );
 	traceRight = bullettrace( myOrg, right, false, self );
 	
-	strafe = traceLeft[ "position" ];
+	goLeft = traceLeft[ "fraction" ] >= traceRight[ "fraction" ];
+	// Humans fake: mostly take open side, sometimes wrong-foot on purpose.
+	if ( randomint( 100 ) < 30 )
+	{
+		goLeft = !goLeft;
+	}
 	
-	if ( traceRight[ "fraction" ] > traceLeft[ "fraction" ] )
+	if ( goLeft )
+	{
+		strafe = traceLeft[ "position" ];
+	}
+	else
 	{
 		strafe = traceRight[ "position" ];
 	}
@@ -2108,7 +3397,12 @@ strafe( target )
 	self.bot.last_next_wp = -1;
 	self.bot.last_second_next_wp = -1;
 	self botSetMoveTo( strafe );
-	wait 2;
+	// ADAD bursts, not 2s marathons. Crouch-mix like real players.
+	if ( randomint( 100 ) < 15 )
+	{
+		self thread crouch();
+	}
+	wait randomfloatrange( 0.4, 0.9 );
 	self notify( "kill_goal" );
 }
 
@@ -2169,9 +3463,14 @@ initAStar( goal )
 */
 removeAStar()
 {
+	if ( !isdefined( self.bot.astar ) || self.bot.astar.size <= 0 )
+	{
+		return -1;
+	}
+
 	remove = self.bot.astar.size - 1;
 	
-	if ( level.teambased )
+	if ( level.teambased && isdefined( self.bot.astar[ remove ] ) )
 	{
 		RemoveWaypointUsage( self.bot.astar[ remove ], self.team );
 	}
@@ -2260,6 +3559,18 @@ doWalk( goal, dist, isScriptGoal )
 				
 				self notify( "new_static_waypoint" );
 				
+				// Danger nodes (editor-set facing) and nodes near where fighting just
+				// happened sometimes get slow, cleared entries. Rushers never bother.
+				nextOrigin = level.waypoints[ self.bot.next_wp ].origin;
+				nearFight = isdefined( bot_pick_fight_spot_near( nextOrigin, 700 ) );
+				cautiousChance = bot_mode_value( "cautious_chance" );
+				self.bot.cautious = ( ( isdefined( level.waypoints[ self.bot.next_wp ].angles ) && randomint( 100 ) < cautiousChance * 2 ) || ( nearFight && randomint( 100 ) < cautiousChance ) ) && !( isdefined( self.pers[ "bots" ][ "persona" ] ) && self.pers[ "bots" ][ "persona" ] == "rusher" );
+				
+				if ( self.bot.cautious && randomint( 100 ) < 25 )
+				{
+					wait randomfloatrange( 0.2, 0.4 );
+				}
+				
 				self movetowards( level.waypoints[ self.bot.next_wp ].origin );
 				self.bot.last_next_wp = self.bot.next_wp;
 				self.bot.last_second_next_wp = self.bot.second_next_wp;
@@ -2277,7 +3588,8 @@ doWalk( goal, dist, isScriptGoal )
 	{
 		self.bot.last_next_wp = -1;
 		self.bot.last_second_next_wp = -1;
-		self movetowards( goal ); // any better way??
+		self.bot.cautious = false;
+			self movetowards( goal ); // any better way??
 	}
 	
 	self notify( "finished_goal" );
@@ -2318,7 +3630,23 @@ movetowards( goal )
 	
 	while ( distancesquared( self.origin, goal ) > tempGoalDist )
 	{
+		// motor model stop: stand still without it counting as being stuck
+		if ( self motorPaused() )
+		{
+			self botSetMoveTo( self.origin );
+			wait 0.05;
+			continue;
+		}
+		
 		self botSetMoveTo( goal );
+
+		// Cautious entries: ADS-walk the last stretch into a danger node instead
+		// of sprinting blind into it. Re-pressing each tick holds ADS; it
+		// releases shortly after we stop calling it. aim_loop owns ADS in fights.
+		if ( !getdvarint( "bots_motor_model" ) && self.bot.cautious && !isdefined( self.bot.target ) && distancesquared( self.origin, goal ) < 400 * 400 && self botViewIsOpen( 400 ) )
+		{
+			self thread pressADS( 0.3 );
+		}
 		
 		if ( time > 3000 )
 		{
@@ -2326,8 +3654,15 @@ movetowards( goal )
 			
 			if ( distancesquared( self.origin, lastOri ) < 32 * 32 )
 			{
-				self thread knife();
-				wait 0.5;
+				// Only knife when an enemy is actually close; knifing walls is a bot tell.
+				if ( isdefined( self.bot.target ) && isdefined( self.bot.target.entity ) && isdefined( self.bot.target.dist ) && self.bot.target.dist < level.bots_maxknifedistance )
+				{
+					self thread knife( self.bot.target.entity );
+				}
+				
+				// Hesitate like a human: stop, look, then sidestep.
+				self BotTelemetryEvent( "stuck" );
+				wait randomfloatrange( 0.3, 0.6 );
 				
 				stucks++;
 				
@@ -2347,7 +3682,11 @@ movetowards( goal )
 		}
 		else if ( timeslow > 0 && ( timeslow % 1000 ) == 0 )
 		{
-			self thread doMantle();
+			if ( ( isdefined( goal ) && goal[ 2 ] > self.origin[ 2 ] + 20 ) || randomint( 100 ) < 50 )
+			{
+				wait randomfloatrange( 0.2, 0.5 );
+				self thread doMantle();
+			}
 		}
 		else if ( time == 2000 )
 		{
@@ -2801,17 +4140,12 @@ botSetMoveTo( where )
 }
 
 /*
-	Bots will look at the pos
+	Bots will look at the pos. aim_loop calls this every tick (20Hz); it advances
+	a persistent human motor model one tick (see aimControllerStep).
+	tools/sim/aim_sim.py mirrors this math, keep them in sync.
 */
 bot_lookat( pos, time, vel, doAimPredict )
 {
-	self notify( "bots_aim_overlap" );
-	self endon( "bots_aim_overlap" );
-	self endon( "disconnect" );
-	self endon( "death" );
-	self endon( "spawned_player" );
-	level endon ( "game_ended" );
-	
 	if ( level.gameended || level.inprematchperiod || self.bot.isfrozen || !getdvarint( "bots_play_aim" ) )
 	{
 		return;
@@ -2827,7 +4161,7 @@ bot_lookat( pos, time, vel, doAimPredict )
 		doAimPredict = false;
 	}
 	
-	if ( !isdefined( time ) )
+	if ( !isdefined( time ) || time < 0.05 )
 	{
 		time = 0.05;
 	}
@@ -2837,35 +4171,358 @@ bot_lookat( pos, time, vel, doAimPredict )
 		vel = ( 0, 0, 0 );
 	}
 	
-	steps = int( time * 20 );
+	myEye = self getEyePos();
+	view = self getplayerangles();
 	
-	if ( steps < 1 )
+	// Keep whatever else moved our view (damage flinch, spawn, script): the
+	// motor model then corrects it like a person instead of snapping back.
+	if ( isdefined( self.bot.aim_ang ) && isdefined( self.bot.aim_last_set ) && aimAngleDist( view, self.bot.aim_last_set ) <= 20 )
 	{
-		steps = 1;
+		self.bot.aim_ang = ( angleclamp180( self.bot.aim_ang[ 0 ] + angleclamp180( view[ 0 ] - self.bot.aim_last_set[ 0 ] ) ), angleclamp180( self.bot.aim_ang[ 1 ] + angleclamp180( view[ 1 ] - self.bot.aim_last_set[ 1 ] ) ), 0 );
 	}
 	
-	myEye = self getEyePos(); // get our eye pos
+	// Full resync on big jumps (spawn, teleport).
+	if ( !isdefined( self.bot.aim_ang ) || !isdefined( self.bot.aim_last_set ) || aimAngleDist( view, self.bot.aim_last_set ) > 20 )
+	{
+		self.bot.aim_ang = ( angleclamp180( view[ 0 ] ), angleclamp180( view[ 1 ] ), 0 );
+		self.bot.aim_mode = "track";
+		self.bot.aim_last_goal = undefined;
+		self.bot.aim_corrections = 0;
+		self.bot.aim_drift = ( 0, 0, 0 );
+		self.bot.aim_recoil = ( 0, 0, 0 );
+		self.bot.aim_vel_seen = ( 0, 0, 0 );
+	}
+	
+	casual = !isdefined( self.bot.target ) && !isdefined( self.bot.after_target );
+	gain = aimTrackGain( time, casual );
 	
 	if ( doAimPredict )
 	{
-		myEye += ( self getvelocity() * 0.05 ) * ( steps - 1 ); // account for our velocity
-		
-		pos += ( vel * 0.05 ) * ( steps - 1 ); // add the velocity vector
+		// Humans notice a strafer's direction change late, then lead out only
+		// part of their own pursuit lag (per-bot lead_frac quirk).
+		self.bot.aim_vel_seen += ( vel - self.bot.aim_vel_seen ) * ( 0.2 + self aimSkillBase() * 0.02 );
+		leadTime = 0.05 * ( 1 - gain ) / gain * self.pers[ "bots" ][ "skill" ][ "lead_frac" ];
+		pos += self.bot.aim_vel_seen * leadTime;
+		myEye += self getvelocity() * leadTime;
 	}
 	
-	myAngle = self getplayerangles();
-	angles = vectortoangles( ( pos - myEye ) - anglestoforward( myAngle ) );
+	goal = vectortoangles( pos - myEye );
 	
-	X = angleclamp180( angles[ 0 ] - myAngle[ 0 ] );
-	X = X / steps;
-	
-	Y = angleclamp180( angles[ 1 ] - myAngle[ 1 ] );
-	Y = Y / steps;
-	
-	for ( i = 0; i < steps; i++ )
+	// People carry the crosshair a few degrees low when not fighting (human
+	// baseline: 4.7 deg down); per-bot habit.
+	if ( casual )
 	{
-		myAngle = ( angleclamp180( myAngle[ 0 ] + X ), angleclamp180( myAngle[ 1 ] + Y ), 0 );
-		self BotBuiltinBotAngles( myAngle );
-		wait 0.05;
+		if ( !isdefined( self.pers[ "bots" ][ "idle_pitch" ] ) )
+		{
+			self.pers[ "bots" ][ "idle_pitch" ] = randomfloatrange( 0.5, 5 );
+		}
+		
+		// slow up/down wander around the bot's habit (humans: pitch sd ~11 deg)
+		if ( !isdefined( self.bot.pitch_wander ) )
+		{
+			self.bot.pitch_wander = 0;
+		}
+		
+		if ( self playerads() < 0.3 )
+		{
+			self.bot.pitch_wander = self.bot.pitch_wander * 0.97 + randomfloatrange( -2.5, 2.5 );
+		}
+		goal = ( goal[ 0 ] + self.pers[ "bots" ][ "idle_pitch" ] + self.bot.pitch_wander, goal[ 1 ], 0 );
 	}
+	
+	self aimControllerStep( goal, distance( myEye, pos ), time, gain, casual );
+}
+
+/*
+	One 50ms tick of the aim motor model:
+	- flick: primary ballistic submovement with a minimum-jerk velocity profile,
+	  duration from Fitts' law, landing short/long by a skill-scaled error
+	- up to 2 short corrective submovements after a flick
+	- otherwise smooth pursuit (exponential tracking, gain from aim_time)
+	- slow correlated drift (Ornstein-Uhlenbeck), never per-tick buzz
+	- recoil climb with skill-scaled pull-down (bots_aim_recoil)
+*/
+aimControllerStep( goal, dist, aimTime, gain, casual )
+{
+	base = self aimSkillBase();
+	se = 1.0 - ( base - 1 ) * 0.1;
+	ang = self.bot.aim_ang;
+	
+	ex = angleclamp180( goal[ 0 ] - ang[ 0 ] );
+	ey = angleclamp180( goal[ 1 ] - ang[ 1 ] );
+	err = sqrt( ex * ex + ey * ey );
+	
+	jump = 0;
+	
+	if ( isdefined( self.bot.aim_last_goal ) )
+	{
+		jump = aimAngleDist( goal, self.bot.aim_last_goal );
+	}
+	
+	self.bot.aim_last_goal = goal;
+	
+	// Angular half-width of a torso (small-angle approx of atan(15 / dist)).
+	if ( dist < 50 )
+	{
+		dist = 50;
+	}
+	
+	w = 859.4 / dist;
+	
+	if ( self.bot.aim_mode != "flick" && err > 4 && ( jump > 2 || err > 15 ) )
+	{
+		// Primary submovement: aims at "roughly there".
+		k = -0.04 * se + aimGauss( 0.06 * se );
+		
+		if ( !casual && randomint( 100 ) < self.pers[ "bots" ][ "skill" ][ "overshoot" ] )
+		{
+			k = abs( k ) + randomfloatrange( 0.04, 0.12 );
+		}
+		
+		// acquisition flicks ~1.8x slower: humans mostly pre-aim, and when they
+		// do turn onto someone it's far slower than our flicks were (peak
+		// 28 deg/s median, 181 p90 vs ours 102 / 460)
+		ticks = aimFlickTicks( err, aimMax( w, 2.5 ), aimTime, casual );
+		
+		if ( !casual )
+		{
+			ticks = int( ticks * 1.8 + 0.5 );
+		}
+		
+		self aimStartFlick( ticks, k, aimGauss( 0.03 * se ) );
+		
+		self.bot.aim_corrections = 2;
+		
+		if ( casual )
+		{
+			self.bot.aim_corrections = 0;
+		}
+	}
+	else if ( self.bot.aim_mode != "flick" && self.bot.aim_corrections > 0 && err > aimMax( w, 0.8 ) )
+	{
+		// Corrective submovement: short, accurate, no deliberate overshoot.
+		self.bot.aim_corrections--;
+		self aimStartFlick( aimFlickTicks( err, aimMax( w, 0.5 ), aimTime, false ), aimGauss( 0.08 * se ), aimGauss( 0.04 * se ) );
+	}
+	
+	if ( self.bot.aim_mode == "flick" )
+	{
+		self.bot.aim_fl_t++;
+		tau = self.bot.aim_fl_t / ( self.bot.aim_fl_n * 1.0 );
+		
+		if ( tau > 1 )
+		{
+			tau = 1;
+		}
+		
+		s = tau * tau * tau * ( 10 - 15 * tau + 6 * tau * tau );
+		start = self.bot.aim_fl_start;
+		k = self.bot.aim_fl_k;
+		perp = self.bot.aim_fl_perp;
+		dx = angleclamp180( goal[ 0 ] - start[ 0 ] );
+		dy = angleclamp180( goal[ 1 ] - start[ 1 ] );
+		ang = ( angleclamp180( start[ 0 ] + ( dx * ( 1 + k ) - dy * perp ) * s ), angleclamp180( start[ 1 ] + ( dy * ( 1 + k ) + dx * perp ) * s ), 0 );
+		
+		if ( self.bot.aim_fl_t >= self.bot.aim_fl_n )
+		{
+			self.bot.aim_mode = "track";
+		}
+	}
+	else if ( err > 0.15 )
+	{
+		ang = ( angleclamp180( ang[ 0 ] + ex * gain ), angleclamp180( ang[ 1 ] + ey * gain ), 0 );
+	}
+	
+	self.bot.aim_ang = ang;
+	
+	// Drift: slow correlated sway. Stationary std dev = aim_jitter degrees.
+	sd = self.pers[ "bots" ][ "skill" ][ "aim_jitter" ];
+	
+	if ( lengthsquared( self getvelocity() ) > 100 * 100 )
+	{
+		sd *= 1.5;
+	}
+	
+	// aiming down sights steadies the aim; the zoom would magnify full sway
+	// into visible twitching
+	ads = self playerads();
+	
+	if ( ads > 0.5 )
+	{
+		sd *= 0.35;
+	}
+	
+	sd *= 0.3919; // sqrt( 1 - 0.92 * 0.92 )
+	self.bot.aim_drift = ( self.bot.aim_drift[ 0 ] * 0.92 + aimGauss( sd ), self.bot.aim_drift[ 1 ] * 0.92 + aimGauss( sd ), 0 );
+	
+	// Recoil: full-auto climbs, pulled down imperfectly; recovers when not firing.
+	// Pitch up is negative.
+	if ( getdvarint( "bots_aim_recoil" ) && self.bot.is_cur_full_auto && isdefined( self.bot.aim_fired_time ) && gettime() - self.bot.aim_fired_time < 100 )
+	{
+		comp = 0.5 + base * 0.06;
+		self.bot.aim_recoil = ( self.bot.aim_recoil[ 0 ] - randomfloatrange( 0.2, 0.35 ) * ( 1 - comp ), self.bot.aim_recoil[ 1 ] + randomfloatrange( -0.12, 0.12 ) * ( 1 - comp ), 0 );
+	}
+	else
+	{
+		self.bot.aim_recoil *= 0.75;
+	}
+	
+	// spray wander: during a burst the aim drifts both ways like a human spray
+	// (humans' aim error while firing is ~2x ours); decays back after
+	if ( !isdefined( self.bot.aim_spray ) )
+	{
+		self.bot.aim_spray = ( 0, 0, 0 );
+	}
+	
+	if ( isdefined( self.bot.burst_until ) && gettime() < self.bot.burst_until )
+	{
+		sprayScale = 1.0;
+		
+		if ( ads > 0.5 )
+		{
+			sprayScale = 0.6;
+		}
+		
+		self.bot.aim_spray = ( self.bot.aim_spray[ 0 ] * 0.9 + randomfloatrange( -0.35, 0.3 ) * sprayScale, self.bot.aim_spray[ 1 ] * 0.9 + randomfloatrange( -0.45, 0.45 ) * sprayScale, 0 );
+	}
+	else
+	{
+		self.bot.aim_spray *= 0.7;
+	}
+	
+	pitch = ang[ 0 ] + self.bot.aim_drift[ 0 ] + self.bot.aim_recoil[ 0 ] + self.bot.aim_spray[ 0 ];
+	
+	if ( pitch > 85 )
+	{
+		pitch = 85;
+	}
+	else if ( pitch < -85 )
+	{
+		pitch = -85;
+	}
+	
+	final = ( pitch, angleclamp180( ang[ 1 ] + self.bot.aim_drift[ 1 ] + self.bot.aim_recoil[ 1 ] + self.bot.aim_spray[ 1 ] ), 0 );
+	self BotBuiltinBotAngles( final );
+	self.bot.aim_last_set = final;
+}
+
+/*
+	Begins a submovement from the current intended angles.
+*/
+aimStartFlick( ticks, k, perp )
+{
+	self.bot.aim_mode = "flick";
+	self.bot.aim_fl_start = self.bot.aim_ang;
+	self.bot.aim_fl_t = 0;
+	self.bot.aim_fl_n = ticks;
+	self.bot.aim_fl_k = k;
+	self.bot.aim_fl_perp = perp;
+}
+
+/*
+	Fitts' law movement time, in 50ms ticks (min 2).
+*/
+aimFlickTicks( amp, w, aimTime, casual )
+{
+	t = ( 0.04 + aimTime * 0.25 ) + ( 0.03 + aimTime * 0.06 ) * aimLog2( 1.0 + amp / w );
+	
+	if ( casual )
+	{
+		t *= 2.2;
+	}
+	
+	ticks = int( t / 0.05 + 0.5 );
+	
+	if ( ticks < 2 )
+	{
+		ticks = 2;
+	}
+	
+	return ticks;
+}
+
+/*
+	Pursuit gain per tick from aim_time; capped so no one tracks like an aimbot.
+*/
+aimTrackGain( aimTime, casual )
+{
+	g = 0.05 / aimTime;
+	
+	if ( g > 0.4 )
+	{
+		g = 0.4;
+	}
+	else if ( g < 0.1 )
+	{
+		g = 0.1;
+	}
+	
+	if ( casual )
+	{
+		g *= 0.45;
+	}
+	
+	return g;
+}
+
+/*
+	Skill base 1-7 for the aim model (custom skills fall back to 4).
+*/
+aimSkillBase()
+{
+	base = self.pers[ "bots" ][ "skill" ][ "base" ];
+	
+	if ( !isdefined( base ) || base < 1 || base > 7 )
+	{
+		base = 4;
+	}
+	
+	return base;
+}
+
+/*
+	Approximately gaussian: sum of 3 uniforms has std dev 1.
+*/
+aimGauss( sd )
+{
+	return ( randomfloatrange( -1, 1 ) + randomfloatrange( -1, 1 ) + randomfloatrange( -1, 1 ) ) * sd;
+}
+
+/*
+	log2 for x >= 1: exponent plus linear mantissa (max error ~0.09).
+*/
+aimLog2( x )
+{
+	n = 0;
+	
+	while ( x >= 2 )
+	{
+		x /= 2;
+		n++;
+	}
+	
+	return n + ( x - 1 );
+}
+
+/*
+	Angular distance (pitch/yaw) between two angle vectors.
+*/
+aimAngleDist( a, b )
+{
+	dx = angleclamp180( a[ 0 ] - b[ 0 ] );
+	dy = angleclamp180( a[ 1 ] - b[ 1 ] );
+	return sqrt( dx * dx + dy * dy );
+}
+
+/*
+	Larger of two numbers.
+*/
+aimMax( a, b )
+{
+	if ( a > b )
+	{
+		return a;
+	}
+	
+	return b;
 }

@@ -110,6 +110,304 @@ BotBuiltinBotMeleeParams( yaw, dist )
 }
 
 /*
+	Remembers where fighting happened, for nades and (later) navigation.
+	Ring buffer of the last 24 spots.
+*/
+bot_record_fight( origin )
+{
+	if ( !isdefined( level.bot_fights ) )
+	{
+		level.bot_fights = [];
+		level.bot_fights_next = 0;
+	}
+	
+	spot = spawnstruct();
+	spot.origin = origin;
+	spot.time = gettime();
+	level.bot_fights[ level.bot_fights_next ] = spot;
+	level.bot_fights_next = ( level.bot_fights_next + 1 ) % 24;
+}
+
+/*
+	A random recent (30s) fight spot within the distance band, or undefined.
+*/
+bot_pick_fight_spot( minDist, maxDist )
+{
+	if ( !isdefined( level.bot_fights ) )
+	{
+		return undefined;
+	}
+	
+	cands = [];
+	now = gettime();
+	
+	for ( i = 0; i < level.bot_fights.size; i++ )
+	{
+		spot = level.bot_fights[ i ];
+		
+		if ( now - spot.time > 30000 )
+		{
+			continue;
+		}
+		
+		d = distancesquared( self.origin, spot.origin );
+		
+		if ( d < minDist * minDist || d > maxDist * maxDist )
+		{
+			continue;
+		}
+		
+		cands[ cands.size ] = spot.origin;
+	}
+	
+	if ( !cands.size )
+	{
+		return undefined;
+	}
+	
+	return cands[ randomint( cands.size ) ];
+}
+
+/*
+	Per-game-mode behaviour profile. Values come from human demo baselines
+	(TODO.md "Human baselines"): S&D players hold spots, crouch and peek far
+	more than in respawn modes; hardcore adds caution on top.
+*/
+bot_mode_value( key )
+{
+	sd = level.gametype == "sd";
+	objective = level.gametype == "dom" || level.gametype == "koth" || level.gametype == "sab";
+	hc = getdvarint( "scr_hardcore" );
+	v = 0;
+	
+	switch ( key )
+	{
+		case "hold_chance": // % of roam arrivals where the bot stops and holds an angle
+			v = 40;
+			
+			if ( sd )
+			{
+				v = 70;
+			}
+			else if ( objective )
+			{
+				v = 30;
+			}
+			
+			if ( hc )
+			{
+				v += 15;
+			}
+			
+			break;
+			
+		case "hold_min_ms":
+			v = 1500;
+			
+			if ( sd )
+			{
+				v = 2500;
+			}
+			
+			break;
+			
+		case "hold_max_ms":
+			v = 6000;
+			
+			if ( sd )
+			{
+				v = 9000;
+			}
+			
+			break;
+			
+		case "hold_crouch": // % of holds crouched
+			v = 40;
+			
+			if ( sd )
+			{
+				v = 45;
+			}
+			
+			break;
+			
+		case "hold_prone": // % of holds prone
+			v = 6;
+			
+			if ( sd )
+			{
+				v = 10;
+			}
+			
+			break;
+			
+		case "hold_ads": // % of holds aimed down sights
+			v = 25;
+			
+			if ( sd )
+			{
+				v = 40;
+			}
+			
+			break;
+			
+		case "cautious_chance": // % of danger/fight-adjacent nodes approached ADS-walking
+			v = 20;
+			
+			if ( sd )
+			{
+				v = 45;
+			}
+			
+			if ( hc )
+			{
+				v += 10;
+			}
+			
+			break;
+			
+		case "alive_chat_pct": // S&D: living players rarely type, dead ones do (87% of chat)
+			v = 100;
+			
+			if ( sd )
+			{
+				v = 15;
+			}
+			
+			break;
+	}
+	
+	return v;
+}
+
+/*
+	Ring buffer of recent audible gunshots (origin, team, time) for hearing.
+*/
+bot_record_shot( origin, team )
+{
+	if ( !isdefined( level.bot_shots ) )
+	{
+		level.bot_shots = [];
+		level.bot_shots_next = 0;
+	}
+	
+	shot = spawnstruct();
+	shot.origin = origin;
+	shot.team = team;
+	shot.time = gettime();
+	level.bot_shots[ level.bot_shots_next ] = shot;
+	level.bot_shots_next = ( level.bot_shots_next + 1 ) % 32;
+}
+
+/*
+	The nearest enemy gunshot we could have heard: 250-600ms old (human
+	reaction), within 2000u. Returns its origin or undefined.
+*/
+bot_heard_shot()
+{
+	if ( !isdefined( level.bot_shots ) )
+	{
+		return undefined;
+	}
+	
+	now = gettime();
+	best = undefined;
+	bestDist = 2000 * 2000;
+	
+	for ( i = 0; i < level.bot_shots.size; i++ )
+	{
+		shot = level.bot_shots[ i ];
+		age = now - shot.time;
+		
+		if ( age < 250 || age > 600 || ( level.teambased && shot.team == self.team ) )
+		{
+			continue;
+		}
+		
+		d = distancesquared( self.origin, shot.origin );
+		
+		if ( d < bestDist )
+		{
+			bestDist = d;
+			best = shot.origin;
+		}
+	}
+	
+	return best;
+}
+
+/*
+	Nearest enemy gunshot heard within maxAgeMs and maxDist, or undefined.
+*/
+bot_recent_shot( maxAgeMs, maxDist )
+{
+	if ( !isdefined( level.bot_shots ) )
+	{
+		return undefined;
+	}
+	
+	now = gettime();
+	best = undefined;
+	bestDist = maxDist * maxDist;
+	
+	for ( i = 0; i < level.bot_shots.size; i++ )
+	{
+		shot = level.bot_shots[ i ];
+		
+		if ( now - shot.time > maxAgeMs || ( level.teambased && shot.team == self.team ) )
+		{
+			continue;
+		}
+		
+		d = distancesquared( self.origin, shot.origin );
+		
+		if ( d < bestDist )
+		{
+			bestDist = d;
+			best = shot.origin;
+		}
+	}
+	
+	return best;
+}
+
+/*
+	A recent (20s) fight spot within radius of origin, or undefined.
+*/
+bot_pick_fight_spot_near( origin, radius )
+{
+	if ( !isdefined( level.bot_fights ) )
+	{
+		return undefined;
+	}
+	
+	now = gettime();
+	
+	for ( i = 0; i < level.bot_fights.size; i++ )
+	{
+		spot = level.bot_fights[ i ];
+		
+		if ( now - spot.time < 20000 && distancesquared( origin, spot.origin ) < radius * radius )
+		{
+			return spot.origin;
+		}
+	}
+	
+	return undefined;
+}
+
+/*
+	Logs a behavior event (BE;num;name;event) when bots_telemetry is on.
+*/
+BotTelemetryEvent( event )
+{
+	if ( getdvarint( "bots_telemetry" ) )
+	{
+		logprint( "BE;" + self getentitynumber() + ";" + self.name + ";" + event + "\n" );
+	}
+}
+
+/*
 	Sets angles
 */
 BotBuiltinBotAngles( angles )
@@ -117,6 +415,18 @@ BotBuiltinBotAngles( angles )
 	if ( isdefined( level.bot_builtins ) && isdefined( level.bot_builtins[ "botangles" ] ) )
 	{
 		self [[ level.bot_builtins[ "botangles" ] ]]( angles );
+	}
+}
+
+/*
+	Sets the weapon a bot's input requests (CoD4x botweapon). Must accompany
+	switchtoweapon on CoD4x builds before the Nov 2023 bot weapon fix.
+*/
+BotBuiltinBotWeapon( weapon )
+{
+	if ( isdefined( level.bot_builtins ) && isdefined( level.bot_builtins[ "botweapon" ] ) )
+	{
+		self [[ level.bot_builtins[ "botweapon" ] ]]( weapon );
 	}
 }
 
@@ -428,6 +738,11 @@ BotNotifyBotEvent_( msg, a, b, c, d, e, f, g )
 */
 BotNotifyBotEvent( msg, a, b, c, d, e, f, g )
 {
+	if ( isdefined( a ) && isstring( a ) )
+	{
+		self BotTelemetryEvent( msg + ":" + a );
+	}
+	
 	self thread BotNotifyBotEvent_( msg, a, b, c, d, e, f, g );
 }
 
@@ -1558,6 +1873,49 @@ cac_init_patch()
 }
 
 /*
+	Human-learned graphs link cells people moved between, but people jump,
+	mantle and squeeze past things bots can't. Keep a link only if a player
+	could walk it: clear lines at waist and chest height, and a rise <= 60u.
+*/
+bot_validate_human_nav()
+{
+	kept = 0;
+	dropped = 0;
+	
+	for ( i = 0; i < level.waypoints.size; i++ )
+	{
+		a = level.waypoints[ i ].origin;
+		newKids = [];
+		
+		for ( k = 0; k < level.waypoints[ i ].children.size; k++ )
+		{
+			c = level.waypoints[ i ].children[ k ];
+			
+			if ( c < 0 || c >= level.waypoints.size )
+			{
+				dropped++;
+				continue;
+			}
+			
+			b = level.waypoints[ c ].origin;
+			
+			if ( b[ 2 ] - a[ 2 ] > 60 || !bullettracepassed( a + ( 0, 0, 40 ), b + ( 0, 0, 40 ), false, undefined ) || !bullettracepassed( a + ( 0, 0, 60 ), b + ( 0, 0, 60 ), false, undefined ) )
+			{
+				dropped++;
+				continue;
+			}
+			
+			newKids[ newKids.size ] = c;
+			kept++;
+		}
+		
+		level.waypoints[ i ].children = newKids;
+	}
+	
+	BotBuiltinPrintConsole( "Human nav: kept " + kept + " links, dropped " + dropped + " not walkable for bots." );
+}
+
+/*
 	Parse frontlines type waypoints
 */
 FrontLinesWaypoints()
@@ -1647,7 +2005,8 @@ getABotName()
 		
 		if ( getdvar( "temp_dvar_bot_name_cursor" ) == "" )
 		{
-			setdvar( "temp_dvar_bot_name_cursor", 0 );
+			// random start so each server boot doesn't field the same lineup
+			setdvar( "temp_dvar_bot_name_cursor", randomint( 1000 ) );
 		}
 		
 		filename = "botnames.txt";
@@ -1673,9 +2032,30 @@ getABotName()
 		return undefined;
 	}
 	
-	cur = getdvarint( "temp_dvar_bot_name_cursor" );
-	name = level.bot_names[ cur % level.bot_names.size ];
-	setdvar( "temp_dvar_bot_name_cursor", cur + 1 );
+	// skip names already in the server (carried-over players keep theirs)
+	name = level.bot_names[ 0 ];
+	
+	for ( tries = 0; tries < level.bot_names.size; tries++ )
+	{
+		cur = getdvarint( "temp_dvar_bot_name_cursor" );
+		name = level.bot_names[ cur % level.bot_names.size ];
+		setdvar( "temp_dvar_bot_name_cursor", cur + 1 );
+		inUse = false;
+		
+		for ( i = 0; i < level.players.size; i++ )
+		{
+			if ( level.players[ i ].name == name )
+			{
+				inUse = true;
+				break;
+			}
+		}
+		
+		if ( !inUse )
+		{
+			return name;
+		}
+	}
 	
 	return name;
 }
@@ -1687,6 +2067,22 @@ readWpsFromFile( mapname )
 {
 	waypoints = [];
 	filename = "waypoints/" + mapname + "_wp.csv";
+	
+	// navigation learned from human demos (tools/gen_human_nav.py): real routes,
+	// no hand-made waypoints needed on maps with demo data. (load_waypoints runs
+	// before _bot.gsc sets dvar defaults, so default it here too.)
+	if ( getdvar( "bots_nav_human" ) == "" )
+	{
+		setdvar( "bots_nav_human", true );
+	}
+	
+	level.bot_nav_is_human = false;
+	
+	if ( getdvarint( "bots_nav_human" ) && BotBuiltinFileExists( "waypoints_human/" + mapname + "_wp.csv" ) )
+	{
+		filename = "waypoints_human/" + mapname + "_wp.csv";
+		level.bot_nav_is_human = true;
+	}
 	
 	if ( !BotBuiltinFileExists( filename ) )
 	{
@@ -1752,6 +2148,11 @@ load_waypoints()
 	{
 		level.waypoints = wps;
 		BotBuiltinPrintConsole( "Loaded " + wps.size + " waypoints from file." );
+		
+		if ( isdefined( level.bot_nav_is_human ) && level.bot_nav_is_human )
+		{
+			bot_validate_human_nav();
+		}
 	}
 	else
 	{
