@@ -26,6 +26,8 @@ init()
 	}
 	
 	thread load_waypoints();
+	level thread maps\mp\bots\_bot_navgen::navgen_probe_watch();
+	level thread maps\mp\bots\_bot_internal::bot_gaze_load();
 	cac_init_patch();
 	thread hook_callbacks();
 	
@@ -47,11 +49,6 @@ init()
 	if ( getdvar( "bots_main_kickBotsAtEnd" ) == "" )
 	{
 		setdvar( "bots_main_kickBotsAtEnd", false ); // kicks the bots at game end
-	}
-	
-	if ( getdvar( "bots_nav_human" ) == "" ) // use navigation graphs learned from human demos when a map has one
-	{
-		setdvar( "bots_nav_human", true );
 	}
 	
 	if ( getdvar( "bots_motor_model" ) == "" ) // bots move with the human movement state machine learned from demos (_bot_motor_data.gsc)
@@ -306,6 +303,7 @@ init()
 	level thread onPlayerConnect();
 	level thread handleBots();
 	level thread onPlayerChat();
+	level thread watchMarkDvar();
 	
 	array_thread( getentarray( "misc_turret", "classname" ), ::turret_monitoruse_watcher );
 }
@@ -628,7 +626,25 @@ telemetryWatch()
 		o = self.origin;
 		v = self getvelocity();
 		a = self getplayerangles();
-		logprint( "BT;" + self getentitynumber() + ";" + self.name + ";" + isBot + ";" + int( o[ 0 ] ) + ";" + int( o[ 1 ] ) + ";" + int( o[ 2 ] ) + ";" + int( v[ 0 ] ) + ";" + int( v[ 1 ] ) + ";" + int( v[ 2 ] ) + ";" + int( a[ 0 ] ) + ";" + int( a[ 1 ] ) + ";" + self getstance() + ";" + int( self playerads() * 10 ) + ";" + hasTarget + ";" + skill + ";" + self getcurrentweapon() + "\n" );
+		
+		// what the view is on: distance to the first surface along it, or
+		// -1 when it hits nothing (sky / out of the map)
+		eye = self geteye();
+		bt = bullettrace( eye, eye + anglestoforward( a ) * 8000, false, self );
+		depth = int( distance( eye, bt[ "position" ] ) );
+		
+		if ( bt[ "fraction" ] >= 1 || bt[ "surfacetype" ] == "none" || bt[ "surfacetype" ] == "default" && bt[ "position" ][ 2 ] > eye[ 2 ] + 200 )
+		{
+			depth = -1;
+		}
+		
+		lookSrc = "-";
+		
+		if ( isBot && isdefined( self.bot.look_src ) )
+		{
+			lookSrc = self.bot.look_src;
+		}
+		logprint( "BT;" + self getentitynumber() + ";" + self.name + ";" + isBot + ";" + int( o[ 0 ] ) + ";" + int( o[ 1 ] ) + ";" + int( o[ 2 ] ) + ";" + int( v[ 0 ] ) + ";" + int( v[ 1 ] ) + ";" + int( v[ 2 ] ) + ";" + int( a[ 0 ] ) + ";" + int( a[ 1 ] ) + ";" + self getstance() + ";" + int( self playerads() * 10 ) + ";" + hasTarget + ";" + skill + ";" + self getcurrentweapon() + ";" + lookSrc + ";" + depth + "\n" );
 	}
 }
 
@@ -1307,11 +1323,17 @@ addBots()
 	level endon( "game_ended" );
 	
 	bot_wait_for_host();
-	
+
+	// a navmesh being generated for this map: bots would have nowhere to go
+	while ( isdefined( level.bot_nav_generating ) && level.bot_nav_generating )
+	{
+		wait 0.5;
+	}
+
 	for ( ;; )
 	{
 		wait 1.5;
-		
+
 		addBots_loop();
 	}
 }
@@ -1544,6 +1566,28 @@ onPlayerChat()
 	{
 		level waittill( "say", message, player, is_hidden );
 		
+		// feedback marks from a human watching: "!look", "!move", "!stuck",
+		// "!nade", "!dumb", "!ok" -> log the watched bot's full state
+		// (chat text can carry a leading control character: take what follows the "!")
+		cmd = "";
+		bang = strtok( message, "!" );
+		
+		if ( bang.size && bang[ bang.size - 1 ] != message )
+		{
+			words = strtok( bang[ bang.size - 1 ], " " );
+			
+			if ( words.size )
+			{
+				cmd = "!" + words[ 0 ];
+			}
+		}
+		
+		if ( isdefined( player ) && !player is_bot() && ( cmd == "!look" || cmd == "!move" || cmd == "!stuck" || cmd == "!nade" || cmd == "!dumb" || cmd == "!ok" ) )
+		{
+			player thread markWatchedBot( getsubstr_first( cmd ) );
+			continue;
+		}
+		
 		for ( i = 0; i < level.bots.size; i++ )
 		{
 			bot = level.bots[ i ];
@@ -1551,6 +1595,163 @@ onPlayerChat()
 			bot BotNotifyBotEvent( "chat", "chat", message, player, is_hidden );
 		}
 	}
+}
+
+/*
+	CoD4x doesn't pass chat to scripts, so tools/markwatch.py tails the log
+	for "!look"-style chat and sets bots_mark "<client number> <category>".
+*/
+watchMarkDvar()
+{
+	setdvar( "bots_mark", "" );
+	
+	for ( ;; )
+	{
+		wait 0.1;
+		v = getdvar( "bots_mark" );
+		
+		if ( v == "" )
+		{
+			continue;
+		}
+		
+		setdvar( "bots_mark", "" );
+		t = strtok( v, " " );
+		
+		if ( t.size < 2 )
+		{
+			continue;
+		}
+		
+		for ( i = 0; i < level.players.size; i++ )
+		{
+			if ( level.players[ i ] getentitynumber() == int( t[ 0 ] ) )
+			{
+				level.players[ i ] thread markWatchedBot( t[ 1 ] );
+			}
+		}
+	}
+}
+
+/*
+	Mark category without the leading "!".
+*/
+getsubstr_first( cmd )
+{
+	switch ( cmd )
+	{
+		case "!look":
+			return "look";
+			
+		case "!move":
+			return "move";
+			
+		case "!stuck":
+			return "stuck";
+			
+		case "!nade":
+			return "nade";
+			
+		case "!dumb":
+			return "dumb";
+	}
+	
+	return "ok";
+}
+
+/*
+	Called on a human who marked a moment: finds the bot they're watching
+	(the one nearest the centre of their view, or nearest them when
+	following one as a spectator) and logs its full state as a MARK line.
+*/
+markWatchedBot( cat )
+{
+	eye = self geteye();
+	fwd = anglestoforward( self getplayerangles() );
+	best = undefined;
+	bestScore = -1;
+	
+	for ( i = 0; i < level.bots.size; i++ )
+	{
+		bot = level.bots[ i ];
+		
+		if ( !isalive( bot ) || !isdefined( bot.bot ) )
+		{
+			continue;
+		}
+		
+		d = distance( eye, bot.origin );
+		
+		// following a bot: the camera sits on it
+		if ( d < 120 )
+		{
+			best = bot;
+			break;
+		}
+		
+		dot = vectordot( fwd, vectornormalize( bot.origin + ( 0, 0, 40 ) - eye ) );
+		
+		if ( dot > 0.9 && dot > bestScore )
+		{
+			bestScore = dot;
+			best = bot;
+		}
+	}
+	
+	if ( !isdefined( best ) )
+	{
+		self iprintln( "^1No bot in view to mark" );
+		return;
+	}
+	
+	b = best.bot;
+	o = best.origin;
+	a = best getplayerangles();
+	v = best getvelocity();
+	beye = best geteye();
+	bt = bullettrace( beye, beye + anglestoforward( a ) * 8000, false, best );
+	
+	look = "-";
+	motor = "-";
+	roam = "-";
+	goal = "-";
+	target = 0;
+	
+	if ( isdefined( b.look_src ) )
+	{
+		look = b.look_src;
+	}
+	
+	if ( isdefined( b.motor_state ) )
+	{
+		motor = b.motor_state;
+	}
+	
+	if ( isdefined( b.roam_reason ) )
+	{
+		roam = b.roam_reason;
+	}
+	
+	if ( isdefined( b.script_goal ) )
+	{
+		goal = "script " + int( b.script_goal[ 0 ] ) + " " + int( b.script_goal[ 1 ] ) + " " + int( b.script_goal[ 2 ] );
+	}
+	
+	if ( isdefined( b.target ) )
+	{
+		target = 1;
+	}
+	
+	logprint( "MARK;" + cat + ";" + best getentitynumber() + ";" + best.name + ";" + int( o[ 0 ] ) + ";" + int( o[ 1 ] ) + ";" + int( o[ 2 ] ) + ";" + int( a[ 0 ] ) + ";" + int( a[ 1 ] ) + ";" + int( length_2d( v ) ) + ";" + best getstance() + ";" + int( best playerads() * 10 ) + ";" + int( distance( beye, bt[ "position" ] ) ) + ";" + look + ";" + motor + ";" + roam + ";" + goal + ";" + b.next_wp + ";" + target + ";" + b.climbing + "\n" );
+	self iprintln( "Marked ^3" + best.name + "^7 (" + cat + "): look=" + look + " move=" + motor + " goal=" + roam );
+}
+
+/*
+	Horizontal speed of a velocity.
+*/
+length_2d( v )
+{
+	return sqrt( v[ 0 ] * v[ 0 ] + v[ 1 ] * v[ 1 ] );
 }
 
 /*

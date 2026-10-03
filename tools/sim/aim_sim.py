@@ -8,6 +8,9 @@ Scenarios per skill base (1-7, matching the difficulty() tables):
   acquire  - target pops up at a random 20-120 deg offset, 800-2500u, standing
   strafe   - tracking an ADAD strafer (190 u/s, 0.4-0.9s bursts) at 1500u
   spray    - holding fire 1.5s on a still target at 1500u (recoil climb)
+  idle     - no target, gaze-model look changes; view rounded to 1 deg like the
+             netcode, scored with tools/awarescore.py's own view-texture code
+             against the NamelessNoobs Backlot humans
 
 Usage: tools/sim/aim_sim.py [--trials N] [--trace FILE.csv]
 """
@@ -62,6 +65,11 @@ def minjerk(t):
 
 
 class Aim:
+	casual_slow = 1.0  # idle turn slowdown (was 2.2 in GSC: flat, slow sweeps)
+	casual_overshoot = True
+	casual_drift = 0.3  # idle sway, fraction of aim_jitter (GSC aimControllerStep)
+	casual_decay = 0.99
+
 	def __init__(self, base, ang=(0.0, 0.0)):
 		self.aim_time, self.jitter, self.overshoot = SKILLS[base]
 		self.base = base
@@ -77,6 +85,7 @@ class Aim:
 		self.recoil = [0.0, 0.0]
 		self.comp = 0.5 + base * 0.06
 		self.corrections = 0
+		self.settled = False
 		self.skill_err = 1.0 - (base - 1) * 0.1
 		# persistent per-bot quirk: how much of a mover's lag it leads out
 		self.lead_frac = random.uniform(0.35, 0.75) + base * 0.04
@@ -103,8 +112,12 @@ class Aim:
 		b = 0.03 + self.aim_time * 0.06
 		t = a + b * aim_log2(1.0 + amp / w)
 		if casual:
-			t *= 2.2
-		return max(2, int(round(t / TICK)))
+			t *= self.casual_slow
+		ticks = max(2, int(round(t / TICK)))
+		# 2 ticks = two equal steps, a flat robot turn; bell shape needs >= 3
+		if amp > 10 and ticks < 3:
+			ticks = 3
+		return ticks
 
 	def step(self, goal, dist, casual=False, moving=False, firing=False, full_auto=True):
 		ex = clamp180(goal[0] - self.ang[0])
@@ -124,10 +137,12 @@ class Aim:
 			self.fl_t = 0
 			self.fl_n = self.flick_ticks(err, max(w, 2.5), casual)
 			self.fl_k = -0.04 * se + gauss3(0.06 * se)
-			if not casual and random.randint(0, 99) < self.overshoot:
+			if (not casual or self.casual_overshoot) and random.randint(0, 99) < self.overshoot:
 				self.fl_k = abs(self.fl_k) + random.uniform(0.04, 0.12)
 			self.fl_perp = gauss3(0.03 * se)
-			self.corrections = 0 if casual else 2
+			self.corrections = 2
+			if casual:
+				self.corrections = 1 if self.casual_overshoot else 0
 		elif self.mode != "flick" and self.corrections > 0 and err > max(w, 0.8):
 			# corrective submovement: short, accurate, no deliberate overshoot
 			self.corrections -= 1
@@ -149,18 +164,34 @@ class Aim:
 				self.mode = "track"
 		else:
 			g = self.track_gain(casual)
-			if err > 0.15:
+			# casual: hands off the mouse until the look target has moved away
+			if casual:
+				if err > 1.5:
+					self.settled = False
+				elif err < 0.4:
+					self.settled = True
+			else:
+				self.settled = False
+			if not self.settled and err > 0.15:
 				self.ang[0] = clamp180(self.ang[0] + ex * g)
 				self.ang[1] = clamp180(self.ang[1] + ey * g)
 
-		# Ornstein-Uhlenbeck drift: slow, correlated sway, not per-tick buzz
-		sd = self.jitter
-		if moving:
-			sd *= 1.5
-		decay = 0.92
-		n = math.sqrt(1 - decay * decay)
-		self.drift[0] = self.drift[0] * decay + gauss3(sd * n)
-		self.drift[1] = self.drift[1] * decay + gauss3(sd * n)
+		if casual:
+			# a resting hand barely moves: slow, small sway (none at 0)
+			sd = self.jitter * self.casual_drift
+			d = self.casual_decay
+			n = math.sqrt(1 - d * d)
+			self.drift[0] = self.drift[0] * d + gauss3(sd * n)
+			self.drift[1] = self.drift[1] * d + gauss3(sd * n)
+		else:
+			# Ornstein-Uhlenbeck drift: slow, correlated sway, not per-tick buzz
+			sd = self.jitter
+			if moving:
+				sd *= 1.5
+			decay = 0.92
+			n = math.sqrt(1 - decay * decay)
+			self.drift[0] = self.drift[0] * decay + gauss3(sd * n)
+			self.drift[1] = self.drift[1] * decay + gauss3(sd * n)
 
 		# recoil: kick per fired tick, partially pulled down, recovers when idle
 		if firing and full_auto:
@@ -240,6 +271,130 @@ def spray(base, trace=None):
 	return worst
 
 
+class OldIdle(Aim):
+	"""The controller before the idle-texture fix, for A/B in the idle scenario."""
+
+	def flick_ticks(self, amp, w, casual):
+		a = 0.04 + self.aim_time * 0.25
+		b = 0.03 + self.aim_time * 0.06
+		t = a + b * aim_log2(1.0 + amp / w)
+		if casual:
+			t *= 2.2
+		return max(2, int(round(t / TICK)))
+
+	def step(self, goal, dist, casual=False, moving=False, firing=False, full_auto=True):
+		return self._old(goal, dist, casual, moving)
+
+	def _old(self, goal, dist, casual, moving):
+		# identical to Aim.step before the fix: pursuit down to 0.15 deg and
+		# drift always on
+		ex = clamp180(goal[0] - self.ang[0])
+		ey = clamp180(goal[1] - self.ang[1])
+		err = math.hypot(ex, ey)
+		jump = 0.0
+		if self.last_goal is not None:
+			jump = math.hypot(clamp180(goal[0] - self.last_goal[0]), clamp180(goal[1] - self.last_goal[1]))
+		self.last_goal = list(goal)
+		w = torso_w(dist)
+		se = self.skill_err
+		if self.mode != "flick" and err > 4.0 and (jump > 2.0 or err > 15.0):
+			self.mode = "flick"
+			self.fl_start = list(self.ang)
+			self.fl_t = 0
+			self.fl_n = self.flick_ticks(err, max(w, 2.5), casual)
+			self.fl_k = -0.04 * se + gauss3(0.06 * se)
+			self.fl_perp = gauss3(0.03 * se)
+		if self.mode == "flick":
+			self.fl_t += 1
+			s = minjerk(min(1.0, self.fl_t / self.fl_n))
+			dx = clamp180(goal[0] - self.fl_start[0])
+			dy = clamp180(goal[1] - self.fl_start[1])
+			self.ang[0] = clamp180(self.fl_start[0] + (dx * (1 + self.fl_k) - dy * self.fl_perp) * s)
+			self.ang[1] = clamp180(self.fl_start[1] + (dy * (1 + self.fl_k) + dx * self.fl_perp) * s)
+			if self.fl_t >= self.fl_n:
+				self.mode = "track"
+		elif err > 0.15:
+			g = self.track_gain(casual)
+			self.ang[0] = clamp180(self.ang[0] + ex * g)
+			self.ang[1] = clamp180(self.ang[1] + ey * g)
+		sd = self.jitter * (1.5 if moving else 1.0)
+		n = math.sqrt(1 - 0.92 * 0.92)
+		self.drift[0] = self.drift[0] * 0.92 + gauss3(sd * n)
+		self.drift[1] = self.drift[1] * 0.92 + gauss3(sd * n)
+		return (self.ang[0] + self.drift[0], self.ang[1] + self.drift[1])
+
+
+def idle(base, old, ticks=6000):
+	"""Standing/walking with no target: gaze-model looks (bot_lookat casual path).
+
+	Returns 20Hz rows in awarescore's tuple layout, angles rounded to 1 deg."""
+	aim = (OldIdle if old else Aim)(base)
+	rows = []
+	look = [3.0, 0.0]
+	next_look = 0
+	idle_pitch = random.uniform(0.5, 5)
+	wander, next_wander = 0.0, 0
+	moving = False
+	for tick in range(ticks):
+		t = tick * 50
+		if t >= next_look:
+			moving = random.random() < 0.6
+			# gaze picks: mostly near the dominant direction, sometimes elsewhere
+			if random.random() < 0.6:
+				look[1] += random.uniform(-8, 8)
+			else:
+				look[1] += random.choice((-1, 1)) * random.uniform(20, 120)
+			look[0] = random.gauss(2, 6) + random.uniform(-3, 3)
+			next_look = t + (random.randint(500, 1400) if moving else random.randint(1200, 3500))
+		if old:
+			wander = wander * 0.97 + random.uniform(-2.5, 2.5)
+		elif t >= next_wander:
+			wander = max(-10.0, min(10.0, gauss3(4)))
+			next_wander = t + random.randint(1500, 5000)
+		goal = (look[0] + idle_pitch + wander, look[1])
+		view = aim.step(goal, 1000.0, casual=True, moving=moving)
+		p = max(-85, min(85, round(view[0])))
+		rows.append((t, 0.0, 0.0, 0.0, float(p), float(round(view[1]) % 360), 0, 1, 1022, "1"))
+	return rows
+
+
+def idle_report(trials):
+	import os
+	import sys
+	sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+	import awarescore as A
+	print("\nidle view texture (1 deg rounded, per 1000 frames; humans from demo0000 Backlot):")
+	print("  version  small flips  big flips  frames still  flick peak/mean  flicks/min")
+	print("  humans        18.4        26.3        61.9%        1.75           37.6")
+	for old in (True, False):
+		small = big = still = n = 0
+		shapes, fl_n, mins = [], 0, 0.0
+		for i in range(trials):
+			fr = A.frames(idle(random.randint(2, 6), old))
+			prev = None
+			for f in fr:
+				if f is None:
+					continue
+				n += 1
+				ay = abs(f[2])
+				still += ay < 0.5
+				if ay >= 0.5:
+					sgn = f[2] > 0
+					if prev is not None and sgn != prev[0]:
+						if ay < 1.5 and prev[1] < 1.5:
+							small += 1
+						else:
+							big += 1
+					prev = (sgn, ay)
+			fl = A.find_flicks(fr)
+			shapes += [x[4] for x in fl]
+			fl_n += len(fl)
+			mins += len(fr) * TICK / 60
+		shapes.sort()
+		print(f"  {'before' if old else 'after ':7s}  {1000 * small / n:9.1f}  {1000 * big / n:9.1f}  "
+			f"{100 * still / n:10.1f}%   {shapes[len(shapes) // 2]:10.2f}      {fl_n / mins:9.1f}")
+
+
 def main():
 	ap = argparse.ArgumentParser()
 	ap.add_argument("--trials", type=int, default=400)
@@ -271,6 +426,7 @@ def main():
 			f"   {sum(se)/len(se):5.2f}      {sum(so)*100/len(so):5.1f}%   |   {sum(sp)/len(sp):4.2f}")
 	if tf:
 		tf.close()
+	idle_report(max(4, args.trials // 50))
 
 
 if __name__ == "__main__":

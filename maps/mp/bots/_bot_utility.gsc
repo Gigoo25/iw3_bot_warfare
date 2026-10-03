@@ -300,14 +300,21 @@ bot_record_shot( origin, team )
 }
 
 /*
-	The nearest enemy gunshot we could have heard: 250-600ms old (human
-	reaction), within 2000u. Returns its origin or undefined.
+	The nearest enemy gunshot we could have heard, within 2000u, once it is as
+	old as this bot's current reaction delay. Returns its origin or undefined.
 */
 bot_heard_shot()
 {
 	if ( !isdefined( level.bot_shots ) )
 	{
 		return undefined;
+	}
+	
+	// most people turn within ~1s, some take 2-3s (demos: human delay p50
+	// 0.95s, p90 2.6s; bots always took 250-600ms). Resampled per reaction.
+	if ( !isdefined( self.bot.hear_delay ) )
+	{
+		self.bot.hear_delay = int( maps\mp\bots\_bot_internal::botSampleList( "0.3,0.45,0.6,0.75,0.9,1.1,1.4,1.8,2.3,2.8" ) * 1000 );
 	}
 	
 	now = gettime();
@@ -319,7 +326,7 @@ bot_heard_shot()
 		shot = level.bot_shots[ i ];
 		age = now - shot.time;
 		
-		if ( age < 250 || age > 600 || ( level.teambased && shot.team == self.team ) )
+		if ( age < self.bot.hear_delay || age > self.bot.hear_delay + 400 || ( level.teambased && shot.team == self.team ) )
 		{
 			continue;
 		}
@@ -403,7 +410,20 @@ BotTelemetryEvent( event )
 {
 	if ( getdvarint( "bots_telemetry" ) )
 	{
-		logprint( "BE;" + self getentitynumber() + ";" + self.name + ";" + event + "\n" );
+		// BE;num;name;event;x;y;z;next waypoint
+		if ( strtok( event, ":" )[ 0 ] == "roam" && isdefined( self.bot ) )
+		{
+			self.bot.roam_reason = event;
+		}
+		
+		wp = -1;
+		
+		if ( isdefined( self.bot ) && isdefined( self.bot.next_wp ) )
+		{
+			wp = self.bot.next_wp;
+		}
+		
+		logprint( "BE;" + self getentitynumber() + ";" + self.name + ";" + event + ";" + int( self.origin[ 0 ] ) + ";" + int( self.origin[ 1 ] ) + ";" + int( self.origin[ 2 ] ) + ";" + wp + "\n" );
 	}
 }
 
@@ -2065,25 +2085,75 @@ getABotName()
 */
 readWpsFromFile( mapname )
 {
-	waypoints = [];
 	filename = "waypoints/" + mapname + "_wp.csv";
-	
-	// navigation learned from human demos (tools/gen_human_nav.py): real routes,
-	// no hand-made waypoints needed on maps with demo data. (load_waypoints runs
-	// before _bot.gsc sets dvar defaults, so default it here too.)
-	if ( getdvar( "bots_nav_human" ) == "" )
-	{
-		setdvar( "bots_nav_human", true );
-	}
-	
+
+	// navigation learned from human demos (tools/gen_human_nav.py). Off by
+	// default: bots got stuck on it far more than on hand-made waypoints.
 	level.bot_nav_is_human = false;
-	
+
 	if ( getdvarint( "bots_nav_human" ) && BotBuiltinFileExists( "waypoints_human/" + mapname + "_wp.csv" ) )
 	{
 		filename = "waypoints_human/" + mapname + "_wp.csv";
 		level.bot_nav_is_human = true;
 	}
-	
+
+	return readWpCsv( filename );
+}
+
+/*
+	Sets the navigation dvar defaults. load_waypoints runs before _bot.gsc
+	sets dvar defaults, so they are set here.
+*/
+bot_nav_dvars()
+{
+	if ( getdvar( "bots_nav_human" ) == "" ) // use navigation graphs learned from human demos when a map has one
+	{
+		setdvar( "bots_nav_human", false );
+	}
+
+	if ( getdvar( "bots_nav_gen" ) == "" ) // generated navmesh: 1 = on maps without waypoints, 2 = always, 0 = never
+	{
+		setdvar( "bots_nav_gen", 1 );
+	}
+
+	if ( getdvar( "bots_nav_gen_step" ) == "" ) // navmesh node spacing (units)
+	{
+		setdvar( "bots_nav_gen_step", 96 );
+	}
+
+	if ( getdvar( "bots_nav_gen_max" ) == "" ) // navmesh node limit
+	{
+		setdvar( "bots_nav_gen_max", 4000 );
+	}
+}
+
+/*
+	Loads the generated navmesh for the map, building (and caching) it first
+	if there is none yet.
+*/
+load_generated_nav( mapname )
+{
+	wps = readWpCsv( maps\mp\bots\_bot_navgen::navgen_file( mapname ) );
+
+	if ( wps.size )
+	{
+		level.waypoints = wps;
+		BotBuiltinPrintConsole( "Loaded " + wps.size + " waypoints from generated navmesh." );
+		level.bot_nav_is_generated = true;
+		return;
+	}
+
+	maps\mp\bots\_bot_navgen::navgen_build( mapname );
+	level.bot_nav_is_generated = true;
+}
+
+/*
+	Reads a waypoint csv, returns an array of waypoints.
+*/
+readWpCsv( filename )
+{
+	waypoints = [];
+
 	if ( !BotBuiltinFileExists( filename ) )
 	{
 		return waypoints;
@@ -2142,8 +2212,14 @@ load_waypoints()
 		level.waypoints = [];
 	}
 	
-	wps = readWpsFromFile( mapname );
-	
+	bot_nav_dvars();
+	wps = [];
+
+	if ( getdvarint( "bots_nav_gen" ) != 2 )
+	{
+		wps = readWpsFromFile( mapname );
+	}
+
 	if ( wps.size )
 	{
 		level.waypoints = wps;
@@ -2153,6 +2229,10 @@ load_waypoints()
 		{
 			bot_validate_human_nav();
 		}
+	}
+	else if ( getdvarint( "bots_nav_gen" ) == 2 )
+	{
+		load_generated_nav( mapname );
 	}
 	else
 	{
@@ -2178,7 +2258,12 @@ load_waypoints()
 			BotBuiltinPrintConsole( "Loaded " + level.waypoints.size + " waypoints from frontlines." );
 		}
 	}
-	
+
+	if ( !level.waypoints.size && getdvarint( "bots_nav_gen" ) )
+	{
+		load_generated_nav( mapname );
+	}
+
 	if ( !level.waypoints.size )
 	{
 		BotBuiltinPrintConsole( "No waypoints loaded!" );
@@ -3106,23 +3191,130 @@ RemoveWaypointUsage( wp, team )
 }
 
 /*
-	Will linearly search for the nearest waypoint to pos that has a direct line of sight.
+	Spatial index over level.waypoints (256u cells) so nearest-waypoint
+	lookups don't scan every node. Rebuilt when the waypoint count changes
+	(the waypoint editor adds and removes nodes).
+*/
+bot_wp_grid()
+{
+	if ( isdefined( level.bot_wp_grid ) && level.bot_wp_grid_count == level.waypoints.size )
+	{
+		return level.bot_wp_grid;
+	}
+	
+	level.bot_wp_grid = [];
+	level.bot_wp_grid_count = level.waypoints.size;
+	
+	for ( i = 0; i < level.waypoints.size; i++ )
+	{
+		key = bot_wp_grid_key( level.waypoints[ i ].origin, 0, 0 );
+		
+		if ( !isdefined( level.bot_wp_grid[ key ] ) )
+		{
+			level.bot_wp_grid[ key ] = [];
+		}
+		
+		level.bot_wp_grid[ key ][ level.bot_wp_grid[ key ].size ] = i;
+	}
+	
+	return level.bot_wp_grid;
+}
+
+/*
+	Grid cell key of pos, shifted by (dx, dy) cells.
+*/
+bot_wp_grid_key( pos, dx, dy )
+{
+	return ( int( floor( pos[ 0 ] / 256 ) ) + dx ) + "," + ( int( floor( pos[ 1 ] / 256 ) ) + dy );
+}
+
+/*
+	Waypoints within rings cells of pos (rings 1 = the 3x3 cells around it),
+	sorted nearest first.
+*/
+bot_wps_near_sorted( pos, rings )
+{
+	grid = bot_wp_grid();
+	ids = [];
+	dists = [];
+	
+	for ( dx = 0 - rings; dx <= rings; dx++ )
+	{
+		for ( dy = 0 - rings; dy <= rings; dy++ )
+		{
+			key = bot_wp_grid_key( pos, dx, dy );
+			
+			if ( !isdefined( grid[ key ] ) )
+			{
+				continue;
+			}
+			
+			for ( k = 0; k < grid[ key ].size; k++ )
+			{
+				id = grid[ key ][ k ];
+				d = distancesquared( level.waypoints[ id ].origin, pos );
+				
+				// insertion sort: candidate lists are small
+				j = ids.size;
+				
+				while ( j > 0 && dists[ j - 1 ] > d )
+				{
+					ids[ j ] = ids[ j - 1 ];
+					dists[ j ] = dists[ j - 1 ];
+					j--;
+				}
+				
+				ids[ j ] = id;
+				dists[ j ] = d;
+			}
+		}
+	}
+	
+	return ids;
+}
+
+/*
+	Can a player get from pos to waypoint i in a straight line? On generated
+	navmeshes this is a player hull check at step height (a thin wall that
+	a bullet line misses still blocks); elsewhere a bullet line at knee height.
+*/
+bot_wp_reachable( pos, i )
+{
+	org = level.waypoints[ i ].origin;
+	
+	if ( isdefined( level.bot_nav_is_generated ) && level.bot_nav_is_generated )
+	{
+		end = org + ( 0, 0, 18 );
+		return distancesquared( playerphysicstrace( pos + ( 0, 0, 18 ), end ), end ) <= 1;
+	}
+	
+	return bullettracepassed( pos + ( 0, 0, 15 ), org + ( 0, 0, 15 ), false, undefined );
+}
+
+/*
+	Nearest waypoint to pos that can be reached in a straight line. Checks
+	the nearby nodes nearest first; falls back to a full scan only if none.
 */
 GetNearestWaypointWithSight( pos )
 {
+	near = bot_wps_near_sorted( pos, 2 );
+	
+	for ( i = 0; i < near.size && i < 24; i++ )
+	{
+		if ( bot_wp_reachable( pos, near[ i ] ) )
+		{
+			return near[ i ];
+		}
+	}
+	
 	candidate = undefined;
 	dist = 2147483647;
 	
 	for ( i = level.waypoints.size - 1; i >= 0; i-- )
 	{
-		if ( !bullettracepassed( pos + ( 0, 0, 15 ), level.waypoints[ i ].origin + ( 0, 0, 15 ), false, undefined ) )
-		{
-			continue;
-		}
-		
 		curdis = distancesquared( level.waypoints[ i ].origin, pos );
 		
-		if ( curdis > dist )
+		if ( curdis > dist || !bot_wp_reachable( pos, i ) )
 		{
 			continue;
 		}
@@ -3135,10 +3327,22 @@ GetNearestWaypointWithSight( pos )
 }
 
 /*
-	Will linearly search for the nearest waypoint
+	Nearest waypoint to pos.
 */
 getNearestWaypoint( pos )
 {
+	near = bot_wps_near_sorted( pos, 1 );
+	
+	if ( near.size )
+	{
+		// a node in the 3x3 cells is within 256u; one further out can only be
+		// nearer if it is closer than that
+		if ( distancesquared( level.waypoints[ near[ 0 ] ].origin, pos ) <= 256 * 256 )
+		{
+			return near[ 0 ];
+		}
+	}
+	
 	candidate = undefined;
 	dist = 2147483647;
 	
@@ -3179,7 +3383,7 @@ AStarSearch( start, goal, team, greedy_path )
 	
 	_startwp = undefined;
 	
-	if ( !bullettracepassed( start + ( 0, 0, 15 ), level.waypoints[ startWp ].origin + ( 0, 0, 15 ), false, undefined ) )
+	if ( !bot_wp_reachable( start, startWp ) )
 	{
 		_startwp = GetNearestWaypointWithSight( start );
 	}
@@ -3199,7 +3403,7 @@ AStarSearch( start, goal, team, greedy_path )
 	
 	_goalwp = undefined;
 	
-	if ( !bullettracepassed( goal + ( 0, 0, 15 ), level.waypoints[ goalWp ].origin + ( 0, 0, 15 ), false, undefined ) )
+	if ( !bot_wp_reachable( goal, goalWp ) )
 	{
 		_goalwp = GetNearestWaypointWithSight( goal );
 	}

@@ -1986,6 +1986,48 @@ changeToWeapon( weap )
 }
 
 /*
+	Waits up to 1.5s for the bot's view to settle on its aim point (if it
+	has one) with nothing within 300u along the throw. False if it never does.
+*/
+botGrenadeClear()
+{
+	for ( t = 0; t < 30; t++ )
+	{
+		ang = self getplayerangles();
+		eye = self geteye();
+		fwd = anglestoforward( ang );
+		onTarget = true;
+		
+		if ( self HasScriptAimPos() )
+		{
+			onTarget = vectordot( fwd, vectornormalize( self GetScriptAimPos() - eye ) ) > 0.985; // within ~10 deg
+		}
+		
+		// grenades leave the hand rising: check the view line and one 10 deg higher
+		if ( onTarget && bullettracepassed( eye, eye + fwd * 300, false, self ) && bullettracepassed( eye, eye + anglestoforward( ( ang[ 0 ] - 10, ang[ 1 ], 0 ) ) * 300, false, self ) )
+		{
+			return true;
+		}
+		
+		wait 0.05;
+	}
+	
+	return false;
+}
+
+/*
+	Jumps 0.1s before a grenade held for time is released.
+*/
+bot_nade_jump( time )
+{
+	self endon( "death" );
+	self endon( "disconnect" );
+	
+	wait time - 0.1;
+	self thread maps\mp\bots\_bot_internal::jump();
+}
+
+/*
 	Bots throw the grenade
 */
 botThrowGrenade( nade, time )
@@ -1997,6 +2039,21 @@ botThrowGrenade( nade, time )
 	if ( !self getammocount( nade ) )
 	{
 		return false;
+	}
+	
+	// the throw is decided a second or two before release while the bot
+	// keeps moving and turning: only pull the pin once the view is really
+	// on the aim point and the first stretch of the throw is open
+	if ( !self botGrenadeClear() )
+	{
+		self BotTelemetryEvent( "nade_blocked" );
+		return false;
+	}
+	
+	// long throws: jump just before letting go for extra distance, like people do
+	if ( isdefined( self.bot.nade_jump ) && self.bot.nade_jump && time >= 0.2 )
+	{
+		self thread bot_nade_jump( time );
 	}
 	
 	if ( nade != "frag_grenade_mp" )
@@ -2945,29 +3002,34 @@ bot_sd_round_nades()
 			return;
 		}
 		
-		dist = distance( self.origin, enemySide );
+		// aim where people aim: a human lineup thrown from about here at this
+		// point of the round, else a spot enemies are likely to be crossing.
+		// Nothing worth hitting: keep the grenade.
+		spot = self bot_nade_lineup_target();
 		
-		if ( dist < 600 )
+		if ( !isdefined( spot ) )
 		{
+			yaw = vectortoangles( enemySide - self.origin )[ 1 ];
+			spot = self maps\mp\bots\_bot_internal::botLikelyEnemySpot( yaw, 70 );
+			
+			if ( isdefined( spot ) )
+			{
+				spot -= ( 0, 0, 48 ); // chest height back to the floor
+				d = distance( self.origin, spot );
+				
+				if ( d < 600 || d > 1800 )
+				{
+					spot = undefined;
+				}
+			}
+		}
+		
+		if ( !isdefined( spot ) )
+		{
+			self BotTelemetryEvent( "round_nade_notarget" );
 			return;
 		}
 		
-		// land short of their spawn, along the way: where they'll be walking
-		reach = randomfloatrange( 900, 1600 );
-		
-		if ( reach > dist * 0.8 )
-		{
-			reach = dist * 0.8;
-		}
-		
-		wp = getNearestWaypoint( self.origin + vectornormalize( enemySide - self.origin ) * reach );
-		
-		if ( !isdefined( wp ) )
-		{
-			return;
-		}
-		
-		spot = level.waypoints[ wp ].origin;
 		eye = self geteye();
 		apex = ( eye + spot ) / 2 + ( 0, 0, distance( eye, spot ) * 0.35 );
 		
@@ -2989,10 +3051,85 @@ bot_sd_round_nades()
 			cook = randomfloatrange( 0.3, 1.2 );
 		}
 		
+		self.bot.nade_jump = distance( self.origin, spot ) > 1100;
 		self botThrowGrenade( nades[ n ], cook );
+		self.bot.nade_jump = false;
 		self ClearScriptAimPos();
 		wait randomfloatrange( 0.8, 2.5 );
 	}
+}
+
+/*
+	Human grenade lineups for this map (_bot_nade_data.gsc, from demos),
+	parsed once: array of structs with .throw, .land and .round_s.
+*/
+bot_nade_lineups()
+{
+	if ( isdefined( level.bot_nade_lineups ) )
+	{
+		return level.bot_nade_lineups;
+	}
+	
+	level.bot_nade_lineups = [];
+	mapname = getdvar( "mapname" );
+	parts = maps\mp\bots\_bot_nade_data::nade_data( mapname + "_parts" );
+	
+	if ( !isdefined( parts ) )
+	{
+		return level.bot_nade_lineups;
+	}
+	
+	for ( p = 0; p < parts; p++ )
+	{
+		toks = strtok( maps\mp\bots\_bot_nade_data::nade_data( mapname + "_" + p ), ";" );
+		
+		for ( i = 0; i < toks.size; i++ )
+		{
+			f = strtok( toks[ i ], " " );
+			l = spawnstruct();
+			l.throw = ( float_old( f[ 0 ] ), float_old( f[ 1 ] ), float_old( f[ 2 ] ) );
+			l.land = ( float_old( f[ 3 ] ), float_old( f[ 4 ] ), float_old( f[ 5 ] ) );
+			l.round_s = int( f[ 6 ] );
+			level.bot_nade_lineups[ level.bot_nade_lineups.size ] = l;
+		}
+	}
+	
+	return level.bot_nade_lineups;
+}
+
+/*
+	Landing spot of a human lineup thrown from within 300u of us (same
+	floor), at about this point of the round in S&D. Undefined if none.
+*/
+bot_nade_lineup_target()
+{
+	lineups = bot_nade_lineups();
+	elapsed = ( gettime() - self.bot.spawn_time ) / 1000;
+	cands = [];
+	
+	for ( i = 0; i < lineups.size; i++ )
+	{
+		l = lineups[ i ];
+		
+		if ( abs( l.throw[ 2 ] - self.origin[ 2 ] ) > 60 || distancesquared2D( l.throw, self.origin ) > 300 * 300 )
+		{
+			continue;
+		}
+		
+		if ( level.gametype == "sd" && l.round_s >= 0 && abs( l.round_s - elapsed ) > 15 )
+		{
+			continue;
+		}
+		
+		cands[ cands.size ] = l;
+	}
+	
+	if ( !cands.size )
+	{
+		return undefined;
+	}
+	
+	return cands[ randomint( cands.size ) ].land;
 }
 
 /*
@@ -3844,9 +3981,10 @@ bot_weapon_watchdog()
 */
 bot_sd_hold_near( site )
 {
-	spot = undefined;
+	// where human players of our side actually held around this site
+	spot = self maps\mp\bots\_bot_internal::botMapSpotNear( site, 250, 900 );
 	
-	for ( i = 0; i < 12 && level.waypoints.size; i++ )
+	for ( i = 0; !isdefined( spot ) && i < 12 && level.waypoints.size; i++ )
 	{
 		cand = level.waypoints[ randomint( level.waypoints.size ) ].origin;
 		d = distancesquared( cand, site );
@@ -5489,13 +5627,6 @@ bot_sd_defenders_loop( data )
 	// bomb not planted, lets protect our sites
 	if ( !level.bombplanted )
 	{
-		timeleft = maps\mp\gametypes\_globallogic::gettimeremaining() / 1000;
-		
-		if ( timeleft >= 90 )
-		{
-			return;
-		}
-		
 		// check for a bomb carrier, and camp the bomb
 		if ( !level.multibomb && isdefined( level.sdbomb ) )
 		{
@@ -5548,13 +5679,16 @@ bot_sd_defenders_loop( data )
 			return;
 		}
 		
-		if ( data.rand > 50 )
+		// our site for the round (split between sites at round start); switch
+		// to one being planted
+		site = self.bot_sd_site;
+		
+		for ( i = 0; i < sites.size; i++ )
 		{
-			site = self bot_array_nearest_curorigin( sites );
-		}
-		else
-		{
-			site = random( sites );
+			if ( sites[ i ] isInUse() )
+			{
+				site = sites[ i ];
+			}
 		}
 		
 		if ( !isdefined( site ) )
@@ -5685,6 +5819,48 @@ bot_sd_defenders_loop( data )
 }
 
 /*
+	The bomb site this bot plays for this round (S&D resets the level every
+	round, so the plan is made fresh): attackers mostly commit to the team's
+	target site, a few take the other; defenders split between the sites.
+	Sets self.bot_sd_site and self.bot.obj_anchor (roam goals move toward it).
+*/
+bot_sd_assign_site()
+{
+	if ( !isdefined( level.bombzones ) || !level.bombzones.size )
+	{
+		return;
+	}
+	
+	if ( self.team == game[ "attackers" ] )
+	{
+		if ( !isdefined( level.bot_sd_attack_site ) )
+		{
+			level.bot_sd_attack_site = randomint( level.bombzones.size );
+		}
+		
+		i = level.bot_sd_attack_site;
+		
+		if ( randomint( 100 ) < 20 )
+		{
+			i = ( i + 1 ) % level.bombzones.size;
+		}
+	}
+	else
+	{
+		if ( !isdefined( level.bot_sd_defender_count ) )
+		{
+			level.bot_sd_defender_count = randomint( level.bombzones.size );
+		}
+		
+		i = level.bot_sd_defender_count % level.bombzones.size;
+		level.bot_sd_defender_count++;
+	}
+	
+	self.bot_sd_site = level.bombzones[ i ];
+	self.bot.obj_anchor = self.bot_sd_site.curorigin;
+}
+
+/*
 	Bots play sd defenders
 */
 bot_sd_defenders()
@@ -5705,6 +5881,7 @@ bot_sd_defenders()
 	
 	data = spawnstruct();
 	data.rand = self BotGetRandom();
+	self bot_sd_assign_site();
 	
 	for ( ;; )
 	{
@@ -5895,8 +6072,9 @@ bot_sd_attackers_loop( data )
 		return;
 	}
 	
-	// check if to plant
-	if ( timepassed < 120 && timeleft >= 90 && randomint( 100 ) < 98 )
+	// plant once we've made it to our site (the team pushes there together
+	// through the roam goals), or when the clock gets short
+	if ( isdefined( self.bot_sd_site ) && timeleft >= 90 && distancesquared( self.origin, self.bot_sd_site.curorigin ) > 1000 * 1000 )
 	{
 		return;
 	}
@@ -5918,13 +6096,11 @@ bot_sd_attackers_loop( data )
 		return;
 	}
 	
-	if ( data.rand > 50 )
+	plant = self.bot_sd_site;
+	
+	if ( !isdefined( plant ) )
 	{
 		plant = self bot_array_nearest_curorigin( sites );
-	}
-	else
-	{
-		plant = random( sites );
 	}
 	
 	if ( !isdefined( plant ) )
@@ -5993,6 +6169,7 @@ bot_sd_attackers()
 	data = spawnstruct();
 	data.rand = self BotGetRandom();
 	data.first = true;
+	self bot_sd_assign_site();
 	
 	for ( ;; )
 	{
