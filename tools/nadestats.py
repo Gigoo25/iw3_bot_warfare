@@ -30,6 +30,23 @@ def throws_of(base):
 	return throws + list(cur.values())
 
 
+def throws_of_rows(base):
+	"""Like throws_of, plus p0/p1: the trajectory base at the first and last sample."""
+	throws, cur = [], {}
+	for r in csv.DictReader(open(base + ".missiles.csv")):
+		n, t = r["number"], int(r["t"])
+		p = (float(r["x"]), float(r["y"]), float(r["z"]))
+		c = cur.get(n)
+		if c and t - c["last"] <= 500 and c["w"] == r["weapon"]:
+			c["last"] = t
+			c["p1"] = p
+		else:
+			if c:
+				throws.append(c)
+			cur[n] = {"first": t, "last": t, "w": r["weapon"], "tr": r["trtype"], "p0": p, "p1": p}
+	return throws + list(cur.values())
+
+
 def kind(th):
 	dur = (th["last"] - th["first"]) / 1000
 	if th["tr"] == "0" or dur > 20:
