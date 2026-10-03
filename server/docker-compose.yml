@@ -38,6 +38,7 @@ services:
       - cod4x-home:/cod4home                        # homepath: logs, CoD4x files, scriptdata writes
       - ../output:/cod4/mods/mp_bots:ro             # built mod
       - ../scriptdata:/cod4home/mods/mp_bots/scriptdata:ro   # waypoints: fs_fopen only reads loose files, not the iwd
+      - ../scriptdata/navmesh:/cod4home/mods/mp_bots/scriptdata/navmesh   # generated navmeshes (written by the server)
       - ./server.cfg:/cod4/main/server.cfg:ro
     command: >
       +set dedicated 1
