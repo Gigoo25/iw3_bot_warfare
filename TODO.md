@@ -4,9 +4,286 @@ Goal: join a lobby and not be able to tell the bots from players, especially
 in killcams, spectating, and the scoreboard.
 
 ## Validation
-- `tools/check.sh` — offline, no game files: gsc-tool syntax parse + `tools/gsc_lint.py`
-  (unknown functions, bad `path::func`, too many args, missing `::func` refs).
-  Run after every edit batch. NOTE: `build.sh` only zips; it never validated anything.
+
+### The loop that needs nobody in the server
+- `tools/botmatch.sh [minutes] [label] [map] [gametype]` — build, check, restart the
+  container, let 12 bots play on their own, then score the match and diff it against
+  the previous run. Nobody joins, no demo is recorded. ~1 min of overhead plus the
+  match length.
+  How it works: the container fills itself with 12 bots (`server/server.cfg`), the mod's
+  `telemetryWatch()` logs a 5 Hz `BT;` line per player, and `bots_telemetry_out 1` sends
+  those to the server *console* — CoD4X throttles `games_mp.log` to ~5 lines a minute,
+  which is why the telemetry in the old logs is useless. `docker compose logs
+  --timestamps` is the dense channel; `tools/btlog.py` parses it.
+- **Repeat it, don't judge one match.** `POOL=<dir> POOL_MAX=8 tools/botmatch.sh 15 label`
+  pools every capture in `<dir>` and scores the pool, so the KS noise floor falls as
+  1/sqrt(n): at `--min-minutes 0.5` a 15 min match yields ~25 sessions (floor ~0.40)
+  where 1 min sessions yield ~13 (floor ~0.59). Same tells, twice the power. The two
+  `--min-minutes` settings are NOT comparable; each run records which was used.
+- **Tuning knobs without rebuilds**: `DVARS="set bots_glance_wander 1; set bots_idle_turn_slow 1.5"`.
+  Semicolon-separated rcon commands, applied before the map loads and echoed into the
+  run note. That is how gaze/wander/cadence variants get compared inside one build.
+- Things that break a run, all handled now: the shipped map rotation walks the server
+  off mp_backlot mid-match (botmatch pins it to the one map being measured), an
+  in-place `docker compose restart` leaves the server wedged with rcon dead (use
+  down/up), and editing a running bash script corrupts it (botmatch execs a copy).
+- Human source and demo-only metrics:
+  `tools/btlog.py` scores that telemetry against a human baseline using the same scorer
+  as the demo path (`awarescore.score()`), so FDR, bootstrap CIs, overlap, the
+  match-to-match yardstick, the detector, the HTML report and the run history all work
+  the same way: `tools/btlog.py --humans <src> --bots <src> --save LABEL --diff --html out.html`
+- **Human source**: `--humans output/demos/demo0000` (a demo CSV works: position, pitch,
+  yaw, weapon and stance per snapshot, decimated to the same 5 Hz so the sources are
+  comparable). A human *telemetry* log would also work and covers the metrics a demo
+  cannot see (ADS, look target, look source, trace depth), but the existing
+  `output/human*.log` files only contain ~1 s bursts, so those metrics stay uncovered
+  until someone plays one match on a server with `bots_telemetry 1` + `bots_telemetry_out 2`.
+- What telemetry cannot see either way: kills, deaths, fire events, reaction time, hits.
+  Those need the demo stream: extract (`tools/demo/extract.sh`, needs docker), then
+  `tools/awarescore.py --humans <demo...> --bots <demo...> --map mp_backlot`.
+  Recording a *bot-only* demo produces no snapshots at all (bots are not network
+  clients), so the demo path still needs one human in the server.
+
+### Reading the numbers
+- **Measure both sides the same way.** Speed now comes from POSITIONS, not from the
+  engine's reported velocity, because the human side can only be measured from
+  positions. Mixing the two manufactured the single biggest "tell" in the telemetry
+  report (bots 2.1 u/s per sample vs humans 12.8); like-for-like it is 9.8 vs 12.8.
+  Watch for this class of bug: the human and bot sides must go through the same
+  definition or the number means nothing.
+- Every metric reports KS, p, **q** (BH q-value — with ~110 metrics, raw p<.05 flags
+  ~5 by chance), a **bootstrap 90% CI** on KS, **overlap** (KS saturates at 1.00 on one
+  tail value; overlap shows how much is actually shared), where the **bot median sits
+  in the human distribution** (p50/p90), the **human-vs-human KS across matches**
+  (match-to-match variation is the yardstick: a tell below it is invisible in play) and
+  **each bot match's KS on its own** (a tell that holds in one match only is not a tell).
+- Two AUCs: leave-one-session-out (as fitted) and leave-one-match-out, because sessions
+  of one match share one human's habits and the optimistic number flatters results
+  exactly in the 0.7-0.95 range where tuning decisions get made. The match-held-out
+  number needs 2+ bot matches in the run, so a single match reports none.
+- When two runs score different metric sets, `scorecmp diff` prints an
+  "overall, common metrics" row: plain OVERALL averages over different populations and
+  is not comparable, the intersection is.
+- `--html out.html` writes a self-contained report: every metric as a human/bot
+  distribution overlay with all of the above, sortable, plus the per-session scatter
+  and the 10% false-alarm threshold.
+
+### What the unattended loop said BEFORE the mode fix (superseded)
+> These numbers predate the gametype fix: the matches were not reliably
+> S&D, so treat them as a record of what was tried, not as evidence.
+- Shipped build (`223d684`), pooled unattended matches, `--min-minutes 0.5 --settle 5`:
+
+  | pool | bot sessions | OVERALL | AUC | tells after FDR |
+  |---|---|---|---|---|
+  | 2 matches | 78 | 60 | 0.93 | 11/33 |
+  | 3 matches | 145 | 59 | 0.91 | 14/33 |
+  | 4 matches | 209 | 58 | 0.92 | 17/33 |
+
+  OVERALL and AUC are stable; **the tell count rises with n** (11 -> 17) because more
+  sessions resolve smaller differences. That is the point of the tool, but it means
+  "number of tells" is only comparable between runs of the same size — compare arms
+  with pooled, equally sized matches, and read the per-metric q-values rather than the
+  count.
+- Worst remaining tells: `yaw rate p99` 540 vs humans 410 deg/s, `yaw rate p90` 155 vs
+  120, `p90 yaw snap` 570 vs 450, `speed p99` 284 vs 320. So the bots' *fastest* view
+  changes are ~20% quicker than any human's, while the mid-range turn rate matches.
+- **Four changes were tried; all four measured worse** (same build, dvars only,
+  2 pooled matches per arm, same human baseline, uniform scoring):
+
+  | arm | OVERALL | AUC | tells |
+  |---|---|---|---|
+  | shipped defaults | **60** | 0.93 | **11** |
+  | idle glance dwell 800-2400 ms (was 1200-3500) | 54 | 0.99 | 20 |
+  | gaze wander (bounded drift inside the look point) | 59 | 0.89 | 13 |
+  | gaze wander, before an accumulation bug was fixed | 59 | 0.90 | 14 |
+  | idle/casual turn slowdown 1.5 (`bots_idle_turn_slow`) | 54 | 0.99 | 19 |
+
+  The cadence and turn-slowdown arms add ~9 tells and push the detector AUC to ~0.99:
+  humans *do* move their view fast, so making the bots slower is more obvious, not
+  less. An early single-match comparison also suggested the bots' view was "too smooth"
+  (turn jitter 5 vs humans 10 deg/s) — that difference disappeared under pooled scoring,
+  and the change aimed at it did not survive either.
+- The knobs stay (`bots_glance_dwell_lo/hi`, `bots_glance_wander`, `bots_idle_turn_slow`,
+  `bots_max_turn_rate`) with the shipped values as defaults, so any of these can be
+  re-tested cheaply. Do not retune them without pooled evidence.
+- Lesson worth keeping: **one 15 min match cannot decide this.** A single match scored
+  53/0.99 where its own build pooled over three matches scored 59/0.91 — match-to-match
+  variance alone is worth ~6 OVERALL points and 0.06 AUC. Two pooled matches per arm is
+  the smallest unit that separated the arms above.
+
+- **Top open item, first measured tonight: the bots barely shoot.** The telemetry now
+  carries `since_fire` (ms since that player's own last shot) and the human side derives
+  the same number from the demo's eflags fire bit, so both sides are defined identically.
+  In the unattended S&D match: **0.2% of bot samples are within 1s of a shot against
+  7.8% for humans**, KS 0.66, and every bot session sits below the human minimum. Humans
+  in a 25-player lobby simply shoot far more. Whether that is bot behaviour or lobby
+  composition cannot be settled from one match type per side -- a human S&D match on the
+  same server, recorded once, would separate them, and that recording is the most
+  valuable single piece of data still missing. (`tools/btlog.py --engaged 1` restricts
+  every metric to recently-firing samples; off by default, because only ~1% of bot
+  samples qualify -- too thin for stable per-session metrics.)
+
+### What the unattended loop says — VERIFIED runs (sd = S&D, mp_backlot, mode checked)
+- **Read the gametype before trusting any comparison.** `set g_gametype` over rcon is
+  ignored by this engine ("will be changed upon restarting"), so matches ran in whatever
+  mode the server was left in -- mostly `war`. Two pools of the *same build* differed by
+  2x on turn metrics, split by time rather than by configuration. `botmatch.sh` now
+  passes the mode and map into the container command and refuses to score unless
+  `gametype sd, map mp_backlot` is confirmed. Every number below is from verified runs.
+- Reference (2 pooled matches, 92 bot sessions, 13 human sessions from demo0000):
+  **OVERALL 46.6/100, AUC 1.00, 22/37 tells after FDR**.
+- `bots_max_turn_rate 450` (peak view-rate cap, `PVars`/rcon, default off): 2 pooled
+  matches, 105 bot sessions. **OVERALL 49.4, and two tells resolved:**
+  `turn.rate_p99` (bot median 775 -> 415 deg/s against humans' 410, 0% -> 99% in the
+  human band, q 3e-11 -> 0.20) and `path.zigzag_p90`; `turn.snap_pct`, `turn.rate_p90`
+  and `turn.pitch_rate_p90` all improved. Everything that moved the other way
+  (`fire.gap_p50`, `ads_while_moving_pct`, `still_but_turning_pct`, `speed.sprint_pct`)
+  moved *below* the noise floor of 0.40. Probable win, not conclusive: two matches per
+  arm. Adopting it is one default flip; re-verify with more matches before relying on it.
+- **Where the remaining separability lives** (`--ignore` is the quickest way to see it):
+  AUC 0.99 with everything, 0.99 without the fire metrics, **0.81 without fire and turn**.
+  So the bots are caught by two families, in this order:
+  1. **they barely shoot** -- 0.0% of samples within 1s of a shot vs humans 7.8%, every
+     bot session below every human session (KS 0.75, bot spread 0.05: they are
+     *uniformly* silent). Humans in a lobby shoot; the bots hold fire.
+  2. **they turn their view about twice as fast as humans in normal play** -- with the
+     peak capped, `turn.rate_p90` is still 225 deg/s against humans' 120, and
+     `turn.snap_pct` 13.3% against ~2-3%. The cap clipped the tail; the mid-range rate is
+     still robotic. The next lever is the acquisition slowdown (`ticks * 1.8` in
+     `aimControllerStep`) and/or the pursuit gain, measured the same way.
+
+### Earlier arms that are NOT evidence (wrong mode, kept for the record)
+| arm | OVERALL | AUC | tells | why it cannot be trusted |
+|---|---|---|---|---|
+| shipped defaults | 60 | 0.93 | 11/33 | gametype not verified (likely war) |
+| idle glance dwell 800-2400 | 54 | 0.99 | 20/33 | idem |
+| gaze wander (fixed / before a bug fix) | 59 | 0.89 | 13-14/33 | idem |
+| idle/casual turn slowdown 1.5 | 54 | 0.99 | 19/33 | idem |
+| peak-rate cap 450 | 54 | 0.99 | 16/33 | idem -- **re-tested and confirmed above** |
+All of these ran before the mode was pinned, so they are inconclusive rather than
+refuted; the knobs are still in place (`bots_glance_dwell_lo/hi`, `bots_glance_wander`,
+`bots_idle_turn_slow`, `bots_max_turn_rate`) with the shipped values as defaults.
+
+### Tuning knobs (all defaults are the adopted values; nothing needs a rebuild)
+| dvar | default | what it does | evidence |
+|---|---|---|---|
+| `bots_max_turn_rate` | **450** | caps how far the view may move per 0.05s tick | **adopted**: resolved `turn.rate_p99` (775 -> 415 deg/s vs humans 410, 0% -> 99% in band) and `turn.snap_p90` over 2+2 verified matches |
+| `bots_acq_slow` | **2.2** | how long an acquisition flick takes (was hardcoded 1.8) | **adopted**: 3 pooled matches vs a 2-match reference -- OVERALL 47.6 -> 48.9, indistinct 43% -> 46%, 1 tell resolved (`speed.sprint_pct`), none added, and a bootstrap on the difference put 4 movements on the right side of zero against 2 on the wrong |
+| `bots_pursuit_gain` | 1.0 | multiplier on the smooth-pursuit gain | **worse** at 0.85: nothing resolved, 3 new (`speed.still_pct`, `speed.accel_p90`, a thin one), indistinct 43% -> 30%. Slowing the view turns fast turns into stillness |
+| `bots_steady_look` | 0 | a failed glance falls back to the path look instead of a "useful" sweep | **no effect**: churn 28.0% -> 28.8%, OVERALL 47 |
+| `bots_look_hold` | 0 | the gaze hold and the "useful" hold share one timer | **mixed**: +0.8 OVERALL but indistinct 43% -> 41% and both ADS tells got worse; churn only 28.0% -> 26.6% |
+| `bots_glance_dwell_lo/hi` | 1200/3500 | idle glance dwell (ms) | 800-2400 measured worse (wrong mode, re-test before trusting) |
+| `bots_glance_wander` | 0 | slow gaze drift inside the look point | measured worse; off |
+| `bots_idle_turn_slow` | 1.0 | slows idle/casual turns | measured worse; off |
+| `bots_telemetry_out` | 0 | 1 = console (unthrottled, what the loop reads), 2 = both | the loop sets it |
+| `bots_settle` / `--settle` | 5 | seconds dropped at session start | spawn transient |
+
+`tools/tune.sh <label> <matches> "<dvars>" [reference]` runs a whole experiment the way
+the evidence requires: N verified matches into a pool, score the pool, diff against a
+reference pool, and print the resolved/new tells. A single match swings OVERALL by ~5 and
+the AUC by ~0.06 on nothing, so nothing should ever be adopted from one arm.
+
+### Why the bots barely shoot -- answered (bot-side diagnostics, verified S&D)
+Three fields were added to the telemetry for this (`since_fire`, `acq_ms` = ms since
+the current target was acquired, and a shot counter; the human side derives `since_fire`
+from the demo's eflags fire bit so the definition matches). One verified match, 51 bot
+sessions:
+
+| diagnostic | median | p90 |
+|---|---|---|
+| samples with a target (%) | **2.25** | 12.2 |
+| own shots per minute WITH a target | 11.5 | 112 |
+| own shots per minute alive | 1.4 | 5.5 |
+| acquire -> first shot (s) | 0.50 | 1.20 |
+
+So the trigger is *not* the problem: when a bot has a target it shoots 11.5 times a
+minute and pulls the trigger within half a second of acquiring. The bots almost never
+have a target -- 2.25% of samples against humans' implied >=7.8% (the share of their
+samples that follow a shot). The candidates are the acquisition gates in `target()`:
+a bone-trace line-of-sight requirement (`j_head`, `j_ankle_le/ri`), the smoke check,
+the `no_trace_time` memory, and the switch hysteresis (`newDanger < oldDanger + 3`).
+FOV is not obviously narrow (0.45-0.55 cone, widened by `periph_bonus` for moving or
+firing players). **This cannot be settled without the matched human recording**: humans
+are in a 25-player scrum and the bots hold angles on a cover-heavy map, so part of the
+gap is lobby composition. The diagnostic is printed by `tools/btlog.py` on every run.
+
+### Why the bots' view is too active (mechanism found, verified S&D)
+The reference run's turn tells are `turn.rate_p50` 35 vs humans 5 deg/s, `turn.jitter` 60 vs
+10, `turn.rate_p90` 230 vs 125 -- not the tail, the whole distribution. The look-source
+mix (telemetry only) says why:
+
+| look source | share of samples | median yaw rate |
+|---|---|---|
+| useful | 37% | 45 deg/s |
+| gaze | 35% | 60 deg/s |
+| path | 15% | 15 deg/s |
+| scriptaim | 9% | 0 |
+| **target** | **0.7%** | 0 |
+
+and **the bot changes what it is looking at every 0.7 s** (28% of samples). Humans pick
+a look target and hold it for seconds; these bots alternate `gaze`/`useful` several times
+a second and every switch is a 45-60 deg/s move, which is exactly a "always fidgeting"
+signature. Two consequences worth separating: the churn (fixable with
+`bots_glance_dwell_lo/hi`, being tested at 2500-7000ms) and the `target` share at 0.7%,
+which is the same problem as the firing rate -- they rarely have anyone to look at.
+Neither the acquisition slowdown (2.2) nor the pursuit gain (0.85) changed `rate_p50`
+or `jitter` at all, which is consistent: both act on tracking, not on look-target churn.
+
+### How much of a verdict is the match, not the code?
+Two pools in `scores/` are the **same configuration** (peak cap 450, acquisition 2.2) scored on
+different match samples: `acq22` (3 matches, 114 bot sessions) and `adopted` (3 matches,
+136 sessions). They disagree by one tell (`speed.sprint_pct` is a tell in one and not in
+the other) and by 5 points of "indistinct". Same code, same map, same mode, same human
+baseline -- only the bots' matches differ. So:
+
+- a 1-3 tell difference between arms means nothing;
+- "indistinct %" and the tell count move with sample size (more sessions resolve smaller
+  differences), so only compare arms with equal pooled match counts;
+- what survives is the OVERALL delta (consistent: +1.2 for the acquisition change across
+  both comparisons) and the bootstrapped difference, where 6 of 13 movements had a 95%
+  interval that excluded zero.
+
+Every arm verdict in this file is quoted in those terms. `tools/tune.sh` writes
+`scores/<label>-verdict.json` with the headline numbers so a decision can be re-read
+later without re-running it.
+
+### Where this stands (verified S&D, all numbers from pooled unattended matches)
+- Current adopted baseline (peak cap 450, acquisition 2.2): **OVERALL 48.9/100, AUC 0.99,
+  22/37 tells after FDR**, 3 matches / 136 bot sessions / 257 minutes, KS noise floor
+  0.39. The previous verified reference was 47.6/21 tells at 2 matches -- so the
+  session's tuning bought about +1.2 OVERALL, one tell resolved and none added. Honest
+  accounting: small. The measurement harness and the diagnostics were the big wins.
+- Diffing the reference against the adopted build with the bootstrap on the *difference*
+  leaves one real movement (`fire.shots_per_min`, a thin metric) and five inside the
+  noise, i.e. the OVERALL gain is real but small and the per-metric story is thin. Read
+  `scores/*-verdict.json` (written by `tools/tune.sh`) before re-litigating any of this.
+- Still open, in order of how much they would buy:
+  1. **the bots rarely have a target** (1.7% of samples against humans' >=7.8%), which is
+     why they barely shoot. Candidates are in `target()`: the bone-trace line-of-sight
+     requirement, the smoke test, `no_trace_time`, and the switch hysteresis.
+  2. **the human baseline is one 25-player lobby** compared against a 12-bot S&D match.
+     A single human S&D recording would re-base every number here; until then, treat
+     engagement-dependent metrics (firing, ADS, look target) as confounded.
+  3. **look-target churn**: 67% of look-source changes are a `useful <-> gaze` switch,
+     one every 0.7 s at 45-60 deg/s. Three interventions failed to stop it (dwell, path
+     fallback, shared timer), so the cause is elsewhere -- most likely that each branch
+     re-picks a *new* point on expiry rather than holding its current one.
+
+### Run history
+- **Run history** (`scores/`, committed): `--save LABEL` stores a trimmed run
+  (percentiles + KS per metric, sources, filters, sample sizes, scored-with commit);
+  `--diff` prints the metric-level delta against the previous run — new tells,
+  resolved tells, better/worse, with deltas below the KS noise floor marked so
+  sampling noise is not mistaken for progress. Standalone: `tools/scorecmp.py ls|diff|show`.
+  Always pass `--note "which build made these demos"` — the commit stored in a run is
+  the tree that *scored* them, not the tree that built the bots. Diffs are only valid
+  against the same human baseline and the same source (the tool warns when either changed).
+  Baselines: `*-handoff-baseline` (demo source, ours_1..4, pre-humanize) and
+  `*-unattended-baseline` (telemetry source, current build).
+- `tools/check.sh` runs the gsc parse + lint + the fast tool tests; `--full` adds the
+  slow synthetic end-to-end suites, `--no-tests` skips them.
+  Tooling tests: `tools/test_awarescore.py` (16, synthetic demos end-to-end),
+  `tools/test_btlog.py` (18, telemetry + demo-CSV sources), `tools/test_scorecmp.py` (24, run history).
 - `tools/sim/aim_sim.py` — Python mirror of the aim controller (`bot_lookat` /
   `aimControllerStep`). Prints per-skill acquire time, peak turn speed, overshoot rate,
   strafe-tracking accuracy, spray climb. `--trace out.csv` dumps angle traces for plotting.
