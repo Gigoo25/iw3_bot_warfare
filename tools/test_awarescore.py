@@ -23,6 +23,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
 import awarescore as A  # noqa: E402
+import scorecmp  # noqa: E402
 
 HDR = "t,client,team,x,y,z,pitch,yaw,eflags,weapon,ground,evseq,ev0,ev1,ev2,ev3".split(",")
 
@@ -241,6 +242,40 @@ def run(humans, bots, extra=()):
         return json.load(f)
 
 
+class Overlap(unittest.TestCase):
+    """The smoothed overlap must say 'same' for same and 'different' for
+    different, and must not inherit KS's saturation on a single stray value."""
+
+    def _two(self, mean, n=40, seed=0):
+        rng = random.Random(seed)
+        return [rng.gauss(0, 1) for _ in range(n)], [rng.gauss(mean, 1) for _ in range(n)]
+
+    def test_identical_distributions_overlap_high(self):
+        a, b = self._two(0)
+        self.assertGreater(A.ovl(a, b), .90)
+        self.assertAlmostEqual(A.ovl(a, a), 1.0, places=6)
+
+    def test_shift_reduces_overlap_monotonically(self):
+        prev = A.ovl(*self._two(0))
+        for mean in (.2, .6, 1.5, 4.0):
+            cur = A.ovl(*self._two(mean))
+            self.assertLess(cur, prev, f"shift {mean} should overlap less than {prev}")
+            prev = cur
+
+    def test_stray_value_does_not_flip_the_verdict(self):
+        # KS reacts to one extreme sample; smoothed overlap should barely move
+        rng = random.Random(1)
+        a = [rng.gauss(0, 1) for _ in range(20)]
+        b = list(a)
+        b.append(60.0)
+        self.assertLess(A.ovl(a, b), A.ovl(a, a))
+
+    def test_degenerate_inputs(self):
+        self.assertTrue(math.isnan(A.ovl([], [1, 2])))
+        self.assertTrue(math.isnan(A.ovl([1], [1, 2])))
+        self.assertEqual(A.ovl([2, 2, 2], [2, 2, 2]), 1.0)
+
+
 class EndToEnd(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -281,6 +316,62 @@ class EndToEnd(unittest.TestCase):
         hm = sorted(m["context.ctx_where"]["human"])[len(m["context.ctx_where"]["human"]) // 2]
         bm = sorted(m["context.ctx_where"]["bots"])[len(m["context.ctx_where"]["bots"]) // 2]
         self.assertLess(bm, hm)
+
+
+    def test_saved_runs_diff(self):
+        # a planted tell must show up as resolved once the bots stop doing it
+        d = os.path.join(self.d, "scores")
+        run(self.humans, self.mk("plant", 700, level_pitch=True),
+            extra=["--save", "planted", "--scores-dir", d])
+        run(self.humans, self.mk("gone", 1500),
+            extra=["--save", "fixed", "--scores-dir", d])
+        runs = scorecmp.list_runs(d)
+        self.assertEqual(len(runs), 2, runs)
+        a, b = (scorecmp.load_run(p) for p in runs)
+        self.assertEqual((a["run"]["label"], b["run"]["label"]), ("planted", "fixed"))
+        self.assertEqual(b["run"]["humans"], self.humans)
+        self.assertEqual(b["run"]["map"], "mp_test")
+        self.assertEqual(b["run"]["sample"]["bot_sessions"], 20)  # 2 demos x 10 clients
+        # per-session arrays are kept on purpose (a diff bootstraps the difference
+        # between two pools); what must not be there is anything unreduced
+        m = b["metrics"]["aim.pitch_zero"]
+        self.assertEqual(len(m["human"]), 20)
+        self.assertEqual(len(m["bots"]), 20)
+        self.assertIn("b_p50", m)
+        self.assertNotIn("frames", m)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            new_tells = scorecmp.diff(a, b)
+        out = buf.getvalue()
+        self.assertIn("resolved: aim.pitch_zero", out, out)
+        # the planted run flags every bot session at 10% FA, the fixed one must not
+        self.assertEqual(a["flagged"]["caught"], a["flagged"]["bot_sessions"])
+        self.assertLess(b["flagged"]["caught"], a["flagged"]["caught"])
+        self.assertGreaterEqual(b["overall"], a["overall"])
+
+    def test_diff_without_a_previous_run(self):
+        d = os.path.join(self.d, "scores2")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            rc = A.main(["--humans", *self.humans, "--bots", *self.mk("next", 1800, level_pitch=True),
+                         "--map", "mp_test", "--diff", "--scores-dir", d])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("no previous run", out)
+        self.assertEqual(scorecmp.list_runs(d), [], "--diff alone must not store a run")
+
+    def test_diff_prints_previous_delta(self):
+        d = os.path.join(self.d, "scores3")
+        run(self.humans, self.mk("base3", 1900), extra=["--save", "base3", "--scores-dir", d])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = A.main(["--humans", *self.humans, "--bots", *self.mk("new3", 2000, level_pitch=True),
+                         "--map", "mp_test", "--save", "new3", "--diff", "--scores-dir", d])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("new tell: aim.pitch_zero", out, out)
+        self.assertIn("bot p50", out)
+        self.assertEqual(len(scorecmp.list_runs(d)), 2)
 
 
 if __name__ == "__main__":

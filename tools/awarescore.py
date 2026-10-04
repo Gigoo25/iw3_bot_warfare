@@ -43,6 +43,12 @@ Usage:
   tools/awarescore.py --humans output/demos/demo0000 \
       --bots output/demos/ours_1 output/demos/ours_2 [...] [--map mp_backlot]
       [--top 25] [--sessions] [--ignore GLOB ...] [--json out.json]
+
+Run history (tools/scorecmp.py): --save LABEL stores a trimmed run under
+scores/ with the demos, filters and git commit used for scoring; --diff prints
+the metric-level delta against the previous run (new tells, resolved tells,
+better/worse). Use --note to say which build produced the demos: the recorded
+commit is the tree that scored them, not the tree that built the bots.
 Tests: tools/test_awarescore.py
 """
 import argparse
@@ -53,11 +59,14 @@ import fnmatch
 import json
 import math
 import os
+import random
 import re
 import sys
+import zlib
 
 sys.path.insert(0, os.path.dirname(__file__))
 import demostats  # noqa: E402
+import scorecmp  # noqa: E402
 import gen_map_model  # noqa: E402
 import movestats  # noqa: E402
 import nadestats  # noqa: E402
@@ -126,6 +135,89 @@ def ks_p(d, n, m):
     lam = (en + 0.12 + 0.11 / en) * d
     s = sum((-1) ** (j - 1) * math.exp(-2 * j * j * lam * lam) for j in range(1, 101))
     return max(0.0, min(1.0, 2 * s))
+
+
+def fdr_bh(ps):
+    """Benjamini-Hochberg q-values: the smallest FDR at which each p survives.
+
+    With ~110 metrics on screen, raw p<.05 is expected to flag ~5 by chance, so
+    the report shows q alongside p and counts tells that survive FDR control.
+    """
+    n = len(ps)
+    q = [1.0] * n
+    order = sorted(range(n), key=lambda i: ps[i])
+    prev = 1.0
+    for rank in range(n, 0, -1):
+        i = order[rank - 1]
+        prev = min(prev, ps[i] * n / rank)
+        q[i] = min(1.0, prev)
+    return q
+
+
+def ovl(a, b, ngrid=64):
+    """Overlap coefficient of smoothed densities: shared mass everywhere.
+
+    Not the same as 1-KS: KS is the total-variation distance between the empirical
+    CDFs, so it saturates at 1.00 for one stray tail value and ignores everything
+    in between. Smoothing with a Silverman bandwidth first makes the estimate
+    stable at these sample sizes -- two samples from the SAME distribution score
+    around 0.9 here instead of 1-KS, so a metric can have a moderate KS and still
+    be visibly the same distribution, which is exactly what we want to see.
+    """
+    na, nb = len(a), len(b)
+    if na < 2 or nb < 2:
+        return float("nan")
+    mean = (sum(a) + sum(b)) / (na + nb)
+    var = (sum((x - mean) ** 2 for x in a) + sum((x - mean) ** 2 for x in b)) / (na + nb - 2)
+    sd = math.sqrt(max(var, 1e-12))
+    q1, q3 = pct(a + b, .25), pct(a + b, .75)
+    iqr_sd = (q3 - q1) / 1.349 if q3 > q1 else 0.0
+    sd = max(sd, iqr_sd, 1e-9)
+    h = 1.06 * sd * (na * nb / (na + nb)) ** .2
+    lo, hi = min(a + b) - 3 * h, max(a + b) + 3 * h
+    if hi <= lo:
+        return 1.0
+    step = (hi - lo) / ngrid
+    fa = [0.0] * ngrid
+    fb = [0.0] * ngrid
+    inv = 1.0 / h
+    for i in range(ngrid):
+        x = lo + (i + .5) * step
+        fa[i] = sum(math.exp(-.5 * ((x - v) * inv) ** 2) for v in a)
+        fb[i] = sum(math.exp(-.5 * ((x - v) * inv) ** 2) for v in b)
+    sa, sb = sum(fa), sum(fb)
+    if sa <= 0 or sb <= 0:
+        return float("nan")
+    return sum(min(fa[i] / sa, fb[i] / sb) for i in range(ngrid))
+
+
+def pct_rank(x, vals):
+    """Where x sits inside vals, in percent (50 = typical human)."""
+    if not vals:
+        return float("nan")
+    s = sorted(vals)
+    return 100 * (bisect.bisect_left(s, x) + .5 * (bisect.bisect_right(s, x)
+                                                   - bisect.bisect_left(s, x))) / len(s)
+
+
+def ks_ci(a, b, reps=300, seed=0, level=.90):
+    """Bootstrap percentile CI for KS. Seeded per metric so runs diff cleanly."""
+    na, nb = len(a), len(b)
+    if na < 2 or nb < 2 or reps < 2:
+        return None
+    rng = random.Random(seed)
+    vals = []
+    for _ in range(reps):
+        vals.append(ks_dist([a[rng.randrange(na)] for _ in range(na)],
+                            [b[rng.randrange(nb)] for _ in range(nb)]))
+    vals.sort()
+    return (vals[int((1 - level) / 2 * reps)],
+            vals[min(reps - 1, int((1 + level) / 2 * reps))])
+
+
+def median(v):
+    s = sorted(v)
+    return s[len(s) // 2] if len(s) % 2 else (s[len(s) // 2 - 1] + s[len(s) // 2]) / 2
 
 
 def entropy16(yaws):
@@ -1086,6 +1178,7 @@ def load_demo(base, want, group, min_minutes):
             continue
         s = analyze_session(rows, demo, client, min_minutes)
         if s:
+            s["demo"] = demo["tag"]
             out.append(s)
     return out
 
@@ -1292,6 +1385,8 @@ METRICS = [
 
 def kde_bw(vals):
     n = len(vals)
+    if n < 2:
+        return 1e-3 * (1 + abs(sum(vals) / n)) if n else 1e-3
     m = sum(vals) / n
     sd = math.sqrt(sum((x - m) ** 2 for x in vals) / max(n - 1, 1))
     iqr = pct(vals, .75) - pct(vals, .25)
@@ -1329,127 +1424,344 @@ def detector(sess, keys):
                     continue
                 s += max(-3.0, min(3.0, log_kde(x, b, bws[k]) - log_kde(x, h, bws[k])))
             scored.append((s, g, r["name"]))
+    return auc_of(scored), scored
+
+
+def auc_of(scored):
+    """P(bot scores above human) over all pairs; ties count a half."""
     hs = [s for s, g, _ in scored if g == "humans"]
     bs = [s for s, g, _ in scored if g == "bots"]
     if not hs or not bs:
-        return None, scored
+        return None
     wins = sum((b > h) + 0.5 * (b == h) for b in bs for h in hs)
-    return wins / (len(hs) * len(bs)), scored
+    return wins / (len(hs) * len(bs))
+
+
+def detector_cv(sess, keys):
+    """Leave-one-MATCH-out AUC: a session is scored by a KDE that never saw its match.
+
+    detector() is leave-one-SESSION-out, so each KDE is still fitted on the other
+    sessions of the same match. Every session of a match shares one human's
+    habits, so that is optimistic, and tuning decisions are made in exactly the
+    AUC range where the optimism matters. Both numbers get reported.
+
+    Each fold trains on every match but `hold` and scores that match's sessions.
+    The reference class is the fold's TRAINING humans: when all humans come from
+    a single match there is no human match left to hold out, and in-train human
+    scores are optimistic, so the number comes out conservative (human_kind says
+    which case this run is).
+
+    Returns (auc, folds, {"bots": [...], "humans": [...], "human_kind": str}).
+    """
+    demos = sorted({r.get("demo") for g in ("humans", "bots") for r in sess[g]} - {None})
+    bots, humans = [], []
+    folds = 0
+    for hold in demos:
+        train = {g: [r for r in sess[g] if r.get("demo") != hold] for g in ("humans", "bots")}
+        if len(train["humans"]) < 3 or len(train["bots"]) < 3:
+            continue
+        folds += 1
+        bws = {k: kde_bw([r["v"][k] for r in train["humans"] + train["bots"] if k in r["v"]])
+               for k in keys}
+
+        def sc(r, pool):
+            s = 0.0
+            for k in keys:
+                if k not in r["v"]:
+                    continue
+                h = [x["v"][k] for x in train["humans"] if k in x["v"]]
+                b = [x["v"][k] for x in train["bots"] if k in x["v"]]
+                if len(h) < 2 or len(b) < 2:
+                    continue
+                s += max(-3.0, min(3.0, log_kde(r["v"][k], b, bws[k])
+                                   - log_kde(r["v"][k], h, bws[k])))
+            pool.append(s)
+
+        for r in (x for x in sess["humans"] if x.get("demo") == hold):
+            sc(r, humans)
+        for r in (x for x in sess["bots"] if x.get("demo") == hold):
+            sc(r, bots)
+        for r in train["humans"]:
+            sc(r, humans)  # in-fold reference class
+    if not bots or not humans:
+        return None, folds, {"bots": bots, "humans": humans,
+                             "human_kind": "n/a" if not folds else "train"}
+    wins = sum((b > h) + 0.5 * (b == h) for b in bots for h in humans)
+    kind = ("held-out + train"
+            if len({r.get("demo") for r in sess["humans"]}) > 1
+            and len({r.get("demo") for r in sess["bots"]}) > 1 else "train")
+    return wins / (len(bots) * len(humans)), folds, {"bots": bots, "humans": humans,
+                                                    "human_kind": kind}
 
 
 def iqr(v):
     return pct(v, .75) - pct(v, .25)
 
 
-def score(sess, top, show_sessions, ignore=()):
+def seed_for(name):
+    """Stable per-metric bootstrap seed (crc32, not hash(): salted per process)."""
+    return zlib.crc32(name.encode()) & 0xffff
+
+
+def score(sess, top, show_sessions, ignore=(), reps=300, metrics=None):
+    """Per-metric human-vs-bot comparison plus the detector, with resolution data.
+
+    Besides KS and p every metric gets:
+      q      BH q-value -- with ~110 metrics, raw p<.05 flags ~5 by chance
+      ci     bootstrap 90% CI on KS -- the sampling noise at these session counts
+      ovl    overlap coefficient -- KS saturates at 1.00 on a single tail value,
+             OVL shows how much of the distribution is actually shared
+      rank   where the bot median sits inside the human distribution (percent)
+      hself  human-vs-human KS across matches -- match-to-match variation is the
+             yardstick; a tell smaller than that is not visible while playing
+      bdemo  KS of each bot demo on its own -- a tell that holds in one match
+             only is not a tell
+    """
     dist = {g: collections.defaultdict(list) for g in ("humans", "bots")}
+    ddist = {g: collections.defaultdict(lambda: collections.defaultdict(list))
+             for g in ("humans", "bots")}
     for g in ("humans", "bots"):
         for r in sess[g]:
             for k, x in r["v"].items():
                 dist[g][k].append(x)
+                ddist[g][k][r.get("demo", "?")].append(x)
 
-    out, sec_scores, rows = {}, collections.defaultdict(list), []
-    cur_sec = None
-    print(f"\n{'':36s} {'human p10/p50/p90 (n)':>26s}  {'bot p10/p50/p90 (n)':>26s}   KS     p  in-rng spread score")
-    for sec, key, label, fmt in METRICS:
-        if sec != cur_sec:
-            cur_sec = sec
-            print(f"[{sec}]")
+    rows = []
+    metrics = metrics or METRICS
+    nh, nb = len(sess["humans"]), len(sess["bots"])
+    res_noise = 1.36 * math.sqrt((nh + nb) / (nh * nb)) if nh and nb else float("nan")
+    for sec, key, label, fmt in metrics:
+        name = f"{sec}.{key}"
         h, b = dist["humans"][(sec, key)], dist["bots"][(sec, key)]
-        skip = any(fnmatch.fnmatch(f"{sec}.{key}", g) for g in ignore)
-        if len(h) < 3 or len(b) < 3:
-            print(f"  {label:34s} not enough data (humans {len(h)}, bots {len(b)})")
+        r = {"name": name, "sec": sec, "key": key, "label": label, "fmt": fmt, "h": h, "b": b,
+             "thin": len(h) < 3 or len(b) < 3,
+             "skip": any(fnmatch.fnmatch(name, g) for g in ignore)}
+        if not r["thin"]:
+            r["ks"] = ks_dist(h, b)
+            r["p"] = ks_p(r["ks"], len(h), len(b))
+            lo, hi = pct(h, .1), pct(h, .9)
+            r["in"] = 100 * sum(lo <= x <= hi for x in b) / len(b)
+            r["spread"] = iqr(b) / iqr(h) if iqr(h) > 0 else float("nan")
+            r["score"] = 100 * (1 - r["ks"])
+            r["ovl"] = ovl(h, b)
+            r["ci"] = ks_ci(h, b, reps=reps, seed=seed_for(name))
+            r["rank"] = pct_rank(median(b), h)
+            # humans vs humans, one match held out at a time
+            selfk = []
+            for demo, vals in ddist["humans"][(sec, key)].items():
+                if len(vals) < 3:
+                    continue
+                rest = [x for dd, vs in ddist["humans"][(sec, key)].items() if dd != demo
+                        for x in vs]
+                if len(rest) >= 3:
+                    selfk.append(ks_dist(vals, rest))
+            r["hself"] = (median(selfk), max(selfk), len(selfk)) if selfk else (None, None, 0)
+            # each bot match against all humans
+            r["bdemo"] = sorted((demo, ks_dist(vals, h))
+                                for demo, vals in ddist["bots"][(sec, key)].items()
+                                if len(vals) >= 3)
+        rows.append(r)
+
+    tested = [r for r in rows if not r["thin"] and not r["skip"]]
+    for r, q in zip(tested, fdr_bh([r["p"] for r in tested])):
+        r["q"] = q
+    for r in rows:  # ignored metrics are printed but not tested, so they get no q
+        r.setdefault("q", None)
+
+    print(f"\n{'':36s} {'human p10/p50/p90 (n)':>26s}  {'bot p10/p50/p90 (n)':>26s}"
+          f"   KS     p     q  in-rng spread score")
+    cur = None
+    for r in rows:
+        if r["sec"] != cur:
+            cur = r["sec"]
+            print(f"[{cur}]")
+        if r["thin"]:
+            print(f"  {r['label']:34s} not enough data (humans {len(r['h'])}, bots {len(r['b'])})")
             continue
-        lo, hi = pct(h, .1), pct(h, .9)
-        inrange = 100 * sum(lo <= x <= hi for x in b) / len(b)
-        ks = ks_dist(h, b)
-        p = ks_p(ks, len(h), len(b))
-        spread = iqr(b) / iqr(h) if iqr(h) > 0 else float("nan")
-        sc = 100 * (1 - ks)
-        if not skip:
-            sec_scores[sec].append(sc)
-        f = fmt.format
-        hs = f"{f(pct(h, .1))}/{f(pct(h, .5))}/{f(pct(h, .9))} ({len(h)})"
-        bs = f"{f(pct(b, .1))}/{f(pct(b, .5))}/{f(pct(b, .9))} ({len(b)})"
-        print(f"  {label:34s} {hs:>26s}  {bs:>26s}  {ks:4.2f} {p:5.3f}{'*' if p < .05 else ' '}"
-              f" {inrange:4.0f}%  {spread:5.2f} {sc:4.0f}{'  (ignored)' if skip else ''}")
-        out[f"{sec}.{key}"] = {"human": h, "bots": b, "ks": ks, "p": p, "score": sc,
-                               "in_range": inrange, "spread": spread}
-        if skip:
-            continue
-        rows.append((ks, p, sec, key, label, fmt, h, b, inrange, spread))
+        f = r["fmt"].format
+        hs = f"{f(pct(r['h'], .1))}/{f(pct(r['h'], .5))}/{f(pct(r['h'], .9))} ({len(r['h'])})"
+        bs = f"{f(pct(r['b'], .1))}/{f(pct(r['b'], .5))}/{f(pct(r['b'], .9))} ({len(r['b'])})"
+        qc = "    - " if r["q"] is None else f"{r['q']:5.3f}"
+        print(f"  {r['label']:34s} {hs:>26s}  {bs:>26s}  {r['ks']:4.2f} {r['p']:5.3f}"
+              f" {qc} {r['in']:4.0f}% {r['spread']:5.2f} {r['score']:4.0f}"
+              f"{'  (ignored)' if r['skip'] else ''}")
 
     for g in ("humans", "bots"):
-        msgs = [m for r in sess[g] for m in r["chat"]]
+        msgs = [m for r in sess[g] for m in r.get("chat", ())]
         if msgs:
             lens = sorted(len(m[1]) for m in msgs)
             print(f"  chat {g}: {len(msgs)} msgs, dead {100 * sum(m[2] for m in msgs) / len(msgs):.0f}%, "
                   f"median len {lens[len(lens) // 2]}, lowercase "
                   f"{100 * sum(m[1] == m[1].lower() for m in msgs) / len(msgs):.0f}%")
 
-    rows.sort(key=lambda r: -r[0])
-    print("\nTOP TELLS (largest KS first; * = significant)"
+    ranked = sorted(tested, key=lambda r: -r["ks"])
+    print(f"\nTOP TELLS (largest KS first; * = survives FDR 5%)"
           + (f"  ignoring {' '.join(ignore)}" if ignore else ""))
-    for ks, p, sec, _key, label, fmt, h, b, inrange, spread in rows[:top]:
-        hm, bm = pct(h, .5), pct(b, .5)
+    for i, r in enumerate(ranked[:top]):
+        hm, bm = pct(r["h"], .5), pct(r["b"], .5)
         way = "HIGHER" if bm > hm else "LOWER" if bm < hm else "SPREAD"
         note = ""
-        if spread == spread and spread < 0.5:
-            note = f", bots too uniform (spread x{spread:.2f})"
-        elif spread == spread and spread > 2:
-            note = f", bots too varied (spread x{spread:.1f})"
-        print(f"  {ks:4.2f}{'*' if p < .05 else ' '} {sec:8s} {label:34s} bots {way:6s} "
-              f"{fmt.format(bm)} vs {fmt.format(hm)}  ({inrange:.0f}% in human band{note})")
+        if r["spread"] == r["spread"] and r["spread"] < 0.5:
+            note = f", bots too uniform (spread x{r['spread']:.2f})"
+        elif r["spread"] == r["spread"] and r["spread"] > 2:
+            note = f", bots too varied (spread x{r['spread']:.1f})"
+        print(f"  {r['ks']:4.2f}{'*' if r['q'] < .05 else ' '} {r['sec']:8s} {r['label']:34s} "
+              f"bots {way:6s} {r['fmt'].format(bm)} vs {r['fmt'].format(hm)}"
+              f"  ({r['in']:.0f}% in human band{note})")
+        if i < 12:  # detail lines for the worst of it only
+            bits = []
+            if r["ci"]:
+                bits.append(f"KS 90% CI {r['ci'][0]:.2f}-{r['ci'][1]:.2f}")
+            if r["ovl"] == r["ovl"]:
+                bits.append(f"overlap {100 * r['ovl']:.0f}%")
+            if r["rank"] == r["rank"]:
+                bits.append(f"bot median = human p{r['rank']:.0f}")
+            if r["hself"][2]:
+                bits.append(f"human-vs-human KS {r['hself'][0]:.2f} (max {r['hself'][1]:.2f}"
+                            f" over {r['hself'][2]} matches)")
+            if len(r["bdemo"]) > 1:
+                ks_d = [k for _d, k in r["bdemo"]]
+                bits.append(f"per bot match {min(ks_d):.2f}-{max(ks_d):.2f}"
+                            f" over {len(ks_d)} matches")
+            if bits:
+                print(f"        {'; '.join(bits)}")
 
-    keys = [(r[2], r[3]) for r in rows]
+    print("\nRESOLUTION (what this many sessions can actually see)")
+    if tested:
+        selfmed = [r["hself"][0] for r in tested if r["hself"][2]]
+        widths = [(r["ci"][1] - r["ci"][0]) / 2 for r in tested if r["ci"]]
+        ovls = sorted(r["ovl"] for r in tested if r["ovl"] == r["ovl"])
+        sig_raw = sum(1 for r in tested if r["p"] < .05)
+        sig_q = sum(1 for r in tested if r["q"] < .05)
+        if selfmed:
+            beyond = sum(1 for r in tested if r["hself"][1] and r["ks"] > r["hself"][1])
+            print(f"  human-vs-human KS across matches: median {median(selfmed):.2f}, "
+                  f"max {max(r['hself'][1] for r in tested if r['hself'][1]):.2f} "
+                  f"({len(selfmed)}/{len(tested)} metrics have 2+ human matches)"
+                  f" <- a tell below this is invisible in play")
+            print(f"  significant: raw p<.05 {sig_raw}/{len(tested)}, after FDR {sig_q}/{len(tested)}"
+                  f", beyond human match-to-match variation {beyond}/{len(tested)}")
+        else:
+            print(f"  significant: raw p<.05 {sig_raw}/{len(tested)}, after FDR {sig_q}/{len(tested)}"
+                  f"  (need 2+ human matches for the match-to-match yardstick)")
+        if widths:
+            print(f"  KS bootstrap 90% half-width: median +/-{median(widths):.2f} "
+                  f"({reps} resamples) <- sampling noise at these session counts")
+        if ovls:
+            print(f"  overlap (smoothed): median {median(ovls):.2f}, {sum(1 for o in ovls if o > .9)}"
+                  f"/{len(ovls)} above 0.90 (same distribution to the eye)")
+        multi = [r for r in tested if len(r["bdemo"]) > 1 and r["hself"][0]]
+        if multi:
+            every = sum(1 for r in multi if all(k >= r["hself"][0] for _d, k in r["bdemo"]))
+            print(f"  consistent in every bot match: {every}/{len(multi)} metrics "
+                  f"({len(multi)} have 2+ bot matches with >=3 sessions)")
+
+    keys = [(r["sec"], r["key"]) for r in tested]
     auc, scored = detector(sess, keys)
-    sig = sum(1 for r in rows if r[1] < .05)
+    auc_cv, folds, cv = detector_cv(sess, keys)
+    sec_scores = collections.defaultdict(list)
+    for r in tested:
+        sec_scores[r["sec"]].append(r["score"])
     print("\nSECTIONS")
     overall = 0
     for sec, scores in sec_scores.items():
         m = sum(scores) / len(scores)
         overall += m
-        nsig = sum(1 for r in rows if r[2] == sec and r[1] < .05)
+        nsig = sum(1 for r in tested if r["sec"] == sec and r["p"] < .05)
+        nq = sum(1 for r in tested if r["sec"] == sec and r["q"] < .05)
         sauc, _ = detector(sess, [k for k in keys if k[0] == sec])
         sa = f"AUC {sauc:.2f}" if sauc is not None else ""
-        print(f"  {sec:10s} {m:5.0f}/100  {sa:8s}  ({len(scores)} metrics, {nsig} significantly off)")
+        print(f"  {sec:10s} {m:5.0f}/100  {sa:8s}  ({len(scores)} metrics, {nsig} p<.05, {nq} q<.05)")
     overall /= max(len(sec_scores), 1)
-    print(f"  {'OVERALL':10s} {overall:5.0f}/100")
-    if rows:
-        print(f"  indistinct {100 * (len(rows) - sig) / len(rows):5.0f}%    "
-              f"({len(rows) - sig}/{len(rows)} metrics not significantly different)")
-    if auc is not None:
+    if tested:
+        print(f"  {'OVERALL':10s} {overall:5.0f}/100")
+        print(f"  indistinct {100 * (len(tested) - sig_q) / len(tested):5.0f}%    "
+              f"({len(tested) - sig_q}/{len(tested)} metrics not different after FDR control)")
+    else:
+        # an empty metric set must never read as "0/100, nothing wrong"
+        print(f"  {'OVERALL':10s} n/a    (no metric had 3+ sessions on both sides -- "
+              f"not a result; longer matches or lower --min-minutes)")
+    flagged, flagged_cv = {}, {}
+    if auc is not None and tested:
         verdict = ("indistinguishable" if auc < .6 else "weak tells" if auc < .75
                    else "noticeable" if auc < .9 else "obvious bots")
         print(f"  detector   AUC {auc:.2f}   (0.50 = indistinguishable, 1.00 = trivially caught: {verdict})")
+        if auc_cv is not None:
+            print(f"             leave-one-MATCH-out AUC {auc_cv:.2f} over {folds} folds, "
+                  f"human reference = {cv['human_kind']} (the honest number; the one above "
+                  f"fits each KDE on the same match)")
         hsc = sorted(s for s, g, _ in scored if g == "humans")
         thr = hsc[int(0.9 * (len(hsc) - 1))]
         caught = sum(1 for s, g, _ in scored if g == "bots" and s > thr)
         nb = sum(1 for _s, g, _ in scored if g == "bots")
+        flagged = {"fa": .10, "threshold": thr, "caught": caught, "bot_sessions": nb}
         print(f"             at 10% false alarms on humans it flags {caught}/{nb} bot sessions")
+        if auc_cv is not None:
+            hc = sorted(cv["humans"])
+            bc = sum(1 for s in cv["bots"] if s > hc[int(0.9 * (len(hc) - 1))])
+            flagged_cv = {"fa": .10, "caught": bc, "bot_sessions": len(cv["bots"]),
+                          "folds": folds}
+            print(f"             cross-validated it flags {bc}/{len(cv['bots'])} bot sessions "
+                  f"(each match scored by a KDE that never saw it)")
 
     if show_sessions:
-        print("\nPER SESSION (detector score > 0 looks like a bot; worst tells outside the human range)")
+        print("\nPER SESSION (detector score > 0 looks like a bot; the per-metric column"
+              " is comparable across metric counts)")
         by_name = {(g, r["name"]): r for g in ("humans", "bots") for r in sess[g]}
+        nk = max(len(keys), 1)
         for s, g, name in sorted(scored, reverse=True):
             r = by_name[(g, name)]
             tells = []
-            for ks, _p, sec, key, label, fmt, h, _b, _ir, _sp in rows:
-                x = r["v"].get((sec, key))
+            for row in ranked:
+                x = r["v"].get((row["sec"], row["key"]))
                 if x is None:
                     continue
+                h = row["h"]
                 q = (sum(v < x for v in h) + 0.5 * sum(v == x for v in h)) / len(h)
                 ext = abs(q - 0.5) * 2
                 if ext >= 0.9:
-                    tells.append((ext * ks, f"{label}={fmt.format(x)}"))
+                    tells.append((ext * row["ks"], f"{row['label']}={row['fmt'].format(x)}"))
             tells.sort(reverse=True)
-            print(f"  {s:+6.1f} {g[:-1]:5s} {name[:34]:34s} " + "; ".join(t for _, t in tells[:3]))
-    return {"overall": overall, "auc": auc,
+            print(f"  {s:+6.1f} ({s / nk:+.2f}/metric) {g[:-1]:5s} {name[:30]:30s} "
+                  + "; ".join(t for _, t in tells[:3]))
+
+    out = {}
+    for r in rows:
+        if r["thin"]:
+            continue
+        ci = r["ci"] or (None, None)
+        bd = [k for _d, k in r["bdemo"]]
+        out[r["name"]] = {"human": r["h"], "bots": r["b"], "ks": r["ks"], "p": r["p"],
+                          "q": r["q"], "ignored": r["skip"],
+                          "score": r["score"], "in_range": r["in"],
+                          "spread": r["spread"], "ovl": r["ovl"],
+                          "label": r["label"], "section": r["sec"],
+                          "h_n": len(r["h"]), "h_p10": pct(r["h"], .1),
+                          "h_p50": pct(r["h"], .5), "h_p90": pct(r["h"], .9),
+                          "b_n": len(r["b"]), "b_p10": pct(r["b"], .1),
+                          "b_p50": pct(r["b"], .5), "b_p90": pct(r["b"], .9),
+                          "b_p50_rank": r["rank"], "ci_lo": ci[0], "ci_hi": ci[1],
+                          "hself_med": r["hself"][0], "hself_max": r["hself"][1],
+                          "hself_demos": r["hself"][2],
+                          "bdemo_min": min(bd) if bd else None,
+                          "bdemo_med": median(bd) if bd else None,
+                          "bdemo_max": max(bd) if bd else None,
+                          "bdemo_demos": len(bd)}
+
+    sig = sum(1 for r in tested if r["p"] < .05)
+    resolution = {"noise_floor": res_noise, "reps": reps, "tested": len(tested)}
+    return {"overall": overall, "auc": auc, "auc_cv": auc_cv, "auc_cv_folds": folds,
+            "resolution": resolution,
+            "flagged": flagged, "flagged_cv": flagged_cv,
+            "fdr": {"tested": len(tested), "raw_p05": sig, "q05": sum(1 for r in tested if r["q"] < .05)},
             "sections": {s: sum(v) / len(v) for s, v in sec_scores.items()},
             "metrics": out,
-            "tells": [{"metric": f"{r[2]}.{r[3]}", "label": r[4], "ks": r[0], "p": r[1],
-                       "human_p50": pct(r[6], .5), "bot_p50": pct(r[7], .5)} for r in rows],
-            "sessions": [{"score": s, "group": g, "name": n} for s, g, n in scored]}
+            "tells": [{"metric": r["name"], "label": r["label"], "ks": r["ks"], "p": r["p"],
+                       "q": r["q"], "ovl": r["ovl"], "human_p50": pct(r["h"], .5),
+                       "bot_p50": pct(r["b"], .5), "bot_p50_rank": r["rank"],
+                       "hself_med": r["hself"][0]} for r in ranked],
+            "sessions": [{"score": s, "per_metric": s / max(len(keys), 1), "group": g, "name": n}
+                         for s, g, n in scored]}
 
 
 def main(argv=None):
@@ -1464,6 +1776,20 @@ def main(argv=None):
                     help="leave metrics out of scores/detector (still printed); default ignores ping, "
                          "which is not play behaviour. '--ignore' alone scores everything")
     ap.add_argument("--json", default=None)
+    ap.add_argument("--save", nargs="?", const="run", default=None, metavar="LABEL",
+                    help="store this run under scores/LABEL.json for later diffing "
+                         "(default label 'run'); see tools/scorecmp.py")
+    ap.add_argument("--scores-dir", default=scorecmp.DEFAULT_DIR)
+    ap.add_argument("--note", default=None,
+                    help="store this text with the run (which build made the demos, "
+                         "what the batch changed); not shown by --diff unless set")
+    ap.add_argument("--diff", action="store_true",
+                    help="after scoring, print the delta against the previous stored run")
+    ap.add_argument("--reps", type=int, default=300, metavar="N",
+                    help="bootstrap resamples for the KS confidence intervals (default 300, 0 = off)")
+    ap.add_argument("--html", default=None, metavar="FILE",
+                    help="write a self-contained HTML report: every metric as a human/bot "
+                         "distribution overlay with KS, CI, overlap and per-match spread")
     args = ap.parse_args(argv)
 
     sess = {"humans": [], "bots": []}
@@ -1484,15 +1810,47 @@ def main(argv=None):
     print(f"map {args.map}: humans {nh} sessions, {mh:.0f} alive player-min | "
           f"bots {nb} sessions, {mb:.0f} alive player-min")
     print(f"human gaze prior: {ncells} cells | home turf: {nhome} cells cover 50% of human time")
-    print(f"KS noise floor at these sample sizes: ~{1.36 * math.sqrt((nh + nb) / (nh * nb)):.2f} (p=.05)")
-    res = score(sess, args.top, args.sessions, args.ignore)
+    noise = 1.36 * math.sqrt((nh + nb) / (nh * nb))
+    print(f"KS noise floor at these sample sizes: ~{noise:.2f} (p=.05)")
+    res = score(sess, args.top, args.sessions, args.ignore, reps=max(args.reps, 0))
+    res["map"] = args.map
+    res["source"] = "demo snapshots"
+    res["noise_floor"] = noise
+    res["bootstrap_reps"] = args.reps
+    res["sample"] = {"human_sessions": nh, "bot_sessions": nb,
+                     "human_player_min": round(mh, 1), "bot_player_min": round(mb, 1)}
     print("NOT covered (no demo signal): hit accuracy, hit locations, reloads, pain reactions "
           "(need games_mp.log / entity events).")
     if args.json:
-        res["map"] = args.map
         with open(args.json, "w") as f:
             json.dump(res, f, indent=1)
         print(f"wrote {args.json}")
+    if args.html:
+        import report_html
+        report_html.write_report(args.html, res)
+        print(f"wrote {args.html}")
+
+    if args.save or args.diff:
+        rec = scorecmp.run_record(
+            res, {"humans": args.humans, "bots": args.bots, "min_minutes": args.min_minutes,
+                  "ignore": args.ignore, "note": args.note,
+                  "argv": " ".join(argv or sys.argv[1:])},
+            label=args.save or "run")
+        path = scorecmp.next_run_path(rec, args.scores_dir)
+        prev = [p for p in scorecmp.list_runs(args.scores_dir) if p != path]
+        if args.save:
+            print(f"saved run -> {scorecmp.save_run(rec, args.scores_dir, path)}")
+        if args.diff:
+            if not prev:
+                print(f"no previous run in {args.scores_dir}/ -- nothing to diff against",
+                      file=sys.stderr)
+            else:
+                scorecmp.diff(scorecmp.load_run(prev[-1]), rec)
+                if args.html:
+                    import report_html
+                    report_html.write_report(args.html, res,
+                                             prev_run=scorecmp.load_run(prev[-1]))
+                    print(f"wrote {args.html} (with delta vs {prev[-1]})")
     return 0
 
 
