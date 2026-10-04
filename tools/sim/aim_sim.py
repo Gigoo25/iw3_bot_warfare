@@ -65,7 +65,7 @@ def minjerk(t):
 
 
 class Aim:
-	casual_slow = 1.0  # idle turn slowdown (was 2.2 in GSC: flat, slow sweeps)
+	casual_slow = IDLE_TURN_SLOW  # mirrors dvar bots_idle_turn_slow
 	casual_overshoot = True
 	casual_drift = 0.3  # idle sway, fraction of aim_jitter (GSC aimControllerStep)
 	casual_decay = 0.99
@@ -113,6 +113,8 @@ class Aim:
 		t = a + b * aim_log2(1.0 + amp / w)
 		if casual:
 			t *= self.casual_slow
+		else:
+			t *= ACQ_SLOW     # mirrors the GSC acquisition-flick slowdown
 		ticks = max(2, int(round(t / TICK)))
 		# 2 ticks = two equal steps, a flat robot turn; bell shape needs >= 3
 		if amp > 10 and ticks < 3:
@@ -324,6 +326,11 @@ class OldIdle(Aim):
 		return (self.ang[0] + self.drift[0], self.ang[1] + self.drift[1])
 
 
+GLANCE_WANDER = True   # mirrors dvar bots_glance_wander
+ACQ_SLOW = 1.8         # mirrors the GSC acquisition-flick slowdown (1.8)
+IDLE_TURN_SLOW = 1.0   # mirrors dvar bots_idle_turn_slow (1.0 = as-is)
+
+
 def idle(base, old, ticks=6000):
 	"""Standing/walking with no target: gaze-model looks (bot_lookat casual path).
 
@@ -334,6 +341,7 @@ def idle(base, old, ticks=6000):
 	next_look = 0
 	idle_pitch = random.uniform(0.5, 5)
 	wander, next_wander = 0.0, 0
+	gwander, next_gwander = (0.0, 0.0), 0
 	moving = False
 	for tick in range(ticks):
 		t = tick * 50
@@ -345,13 +353,22 @@ def idle(base, old, ticks=6000):
 			else:
 				look[1] += random.choice((-1, 1)) * random.uniform(20, 120)
 			look[0] = random.gauss(2, 6) + random.uniform(-3, 3)
-			next_look = t + (random.randint(500, 1400) if moving else random.randint(1200, 3500))
+			next_look = t + (random.randint(500, 1400) if moving else random.randint(800, 2400))
 		if old:
 			wander = wander * 0.97 + random.uniform(-2.5, 2.5)
 		elif t >= next_wander:
 			wander = max(-10.0, min(10.0, gauss3(4)))
 			next_wander = t + random.randint(1500, 5000)
-		goal = (look[0] + idle_pitch + wander, look[1])
+		# mirror of bots_glance_wander: a held gaze drifts inside the spot it is
+		# looking at, +-14u at 1000u distance = +-0.8 deg, refreshed every 180-420ms
+		if GLANCE_WANDER:
+			if t >= next_gwander:
+				next_gwander = t + random.randint(180, 420)
+				gwander = (max(-0.8, min(0.8, gwander[0] + random.uniform(-0.23, 0.23))),
+				           max(-0.8, min(0.8, gwander[1] + random.uniform(-0.23, 0.23))))
+			goal = (look[0] + idle_pitch + wander, look[1] + gwander[0])
+		else:
+			goal = (look[0] + idle_pitch + wander, look[1])
 		view = aim.step(goal, 1000.0, casual=True, moving=moving)
 		p = max(-85, min(85, round(view[0])))
 		rows.append((t, 0.0, 0.0, 0.0, float(p), float(round(view[1]) % 360), 0, 1, 1022, "1"))
