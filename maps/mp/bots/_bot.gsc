@@ -61,6 +61,84 @@ init()
 		setdvar( "bots_telemetry", 0 );
 	}
 	
+	if ( getdvar( "bots_telemetry_out" ) == "" ) // 0 log only, 1 console only (unthrottled), 2 both
+	{
+		setdvar( "bots_telemetry_out", 0 );
+	}
+	
+	// Measured WORSE with the unattended loop (13 tells vs 11 for the shipped build,
+	// same human baseline): the view drift adds turns that humans do not make.
+	// Kept as a knob, off by default.
+	if ( getdvar( "bots_glance_wander" ) == "" )
+	{
+		setdvar( "bots_glance_wander", 0 );
+	}
+	
+	if ( getdvar( "bots_idle_turn_slow" ) == "" ) // idle/casual turn slowdown, 1.0 = as-is
+	{
+		setdvar( "bots_idle_turn_slow", 1.0 );
+	}	
+	// Peak view-rate cap in deg/s (0 = off). Telemetry says our fastest view
+	// changes are ~20% quicker than any human sample.
+	// 450: verified over two pooled S&D matches per arm, this resolved
+	// turn.rate_p99 (bot median 775 -> 415 deg/s against humans 410, from 0% to
+	// 99% inside the human band) and turn.snap_p90/rate_p90/pitch_rate_p90 all
+	// improved, with everything that moved the other way below the noise floor.
+	// Set 0 to disable.
+	
+	// Mid-range turn rate is the remaining turn tell (yaw rate p90 225 deg/s against
+	// humans 120 even with the peak capped). Two levers on it, both tunable so they
+	// can be compared inside one build: how long an acquisition takes
+	// (bots_acq_slow, was hardcoded 1.8) and how fast the view tracks afterwards
+	// (bots_pursuit_gain, 1.0 = as shipped).
+	
+	// Prefer the calm path look over a "useful" sweep when a glance fails its
+	// line-of-sight check (0 = as shipped, which is what the humanize pass tuned).
+	
+	// Share one timer between the gaze hold and the "useful" sweep hold, so the
+	// view stops ping-ponging between them (0 = as shipped).
+	
+	// Seconds a failed look target must stay failed before the bot abandons it.
+	// 0 = swap on the first bad tick (as shipped). 0.35 damped the flicker without
+	// making the bot stare at walls for long.
+	if ( getdvar( "bots_look_commit" ) == "" )
+	{
+		setdvar( "bots_look_commit", 0 );
+	}
+	if ( getdvar( "bots_look_hold" ) == "" )
+	{
+		setdvar( "bots_look_hold", 0 );
+	}
+	if ( getdvar( "bots_steady_look" ) == "" )
+	{
+		setdvar( "bots_steady_look", 0 );
+	}
+	// 2.2 (was hardcoded 1.8): three pooled S&D matches against a two-match
+	// reference, scored through one path. OVERALL 47.6 -> 48.9, indistinct
+	// 43% -> 46%, one tell resolved and none added, and a bootstrap on the
+	// difference put 4 movements on the right side of zero against 2 on the
+	// wrong (fire.shots_per_min, speed.p99, speed.accel_p90, path.dist_min).
+	if ( getdvar( "bots_acq_slow" ) == "" )
+	{
+		setdvar( "bots_acq_slow", 2.2 );
+	}
+	if ( getdvar( "bots_pursuit_gain" ) == "" )
+	{
+		setdvar( "bots_pursuit_gain", 1.0 );
+	}
+	if ( getdvar( "bots_max_turn_rate" ) == "" )
+	{
+		setdvar( "bots_max_turn_rate", 450 );
+	}
+	
+	// idle glance dwell: humans turn ~10+ deg 37.6 times a minute while idle,
+	// i.e. a ~1.6s mean interval; the shipped 1200-3500ms averages ~2.3s.
+	if ( getdvar( "bots_glance_dwell_lo" ) == "" )
+	{
+		setdvar( "bots_glance_dwell_lo", 1200 );
+		setdvar( "bots_glance_dwell_hi", 3500 );
+	}
+	
 	if ( getdvar( "bots_main_debug" ) == "" )
 	{
 		setdvar( "bots_main_debug", 0 ); // bot debug logging level: 0=off, 1=basic, 2=detailed
@@ -644,7 +722,43 @@ telemetryWatch()
 		{
 			lookSrc = self.bot.look_src;
 		}
-		logprint( "BT;" + self getentitynumber() + ";" + self.name + ";" + isBot + ";" + int( o[ 0 ] ) + ";" + int( o[ 1 ] ) + ";" + int( o[ 2 ] ) + ";" + int( v[ 0 ] ) + ";" + int( v[ 1 ] ) + ";" + int( v[ 2 ] ) + ";" + int( a[ 0 ] ) + ";" + int( a[ 1 ] ) + ";" + self getstance() + ";" + int( self playerads() * 10 ) + ";" + hasTarget + ";" + skill + ";" + self getcurrentweapon() + ";" + lookSrc + ";" + depth + "\n" );
+		
+		acqms = "-1";
+		shots = 0;
+		
+		if ( !isdefined( self.bot ) )
+		{
+			// a real client does not always get the bot struct on this build, and an
+			// undefined-struct read at 5 Hz for the one client type that can be in
+			// the server is exactly what kills the game loop
+			self.bot = spawnstruct();
+			self.bot.fired_at = -999999;
+			self.bot.shots = 0;
+		}
+		
+		if ( isdefined( self.bot.target ) && isdefined( self.bot.target_switch_time ) )
+		{
+			acqms = int( gettime() - self.bot.target_switch_time );
+		}
+		
+		line = "BT;" + self getentitynumber() + ";" + self.name + ";" + isBot + ";" + int( o[ 0 ] ) + ";" + int( o[ 1 ] ) + ";" + int( o[ 2 ] ) + ";" + int( v[ 0 ] ) + ";" + int( v[ 1 ] ) + ";" + int( v[ 2 ] ) + ";" + int( a[ 0 ] ) + ";" + int( a[ 1 ] ) + ";" + self getstance() + ";" + int( self playerads() * 10 ) + ";" + hasTarget + ";" + skill + ";" + self getcurrentweapon() + ";" + lookSrc + ";" + depth + ";" + int( ( gettime() - self.bot.fired_at ) * 1000 ) + ";" + acqms + ";" + shots + "\n";
+		
+		// CoD4X's games_mp.log writer drops all but ~5 lines a minute, which
+		// leaves an unattended match unscorable. print() goes to the server
+		// console, which is not throttled, so tools/botmatch.sh reads it from
+		// the container log instead. bots_telemetry_out: 0 = log only (default),
+		// 1 = console only, 2 = both.
+		out = getdvarint( "bots_telemetry_out" );
+		
+		if ( out != 1 )
+		{
+			logprint( line );
+		}
+		
+		if ( out )
+		{
+			print( line );
+		}
 	}
 }
 
@@ -1533,6 +1647,11 @@ onWeaponFired()
 	for ( ;; )
 	{
 		self waittill( "weapon_fired" );
+		if ( isdefined( self.bot ) )
+		{
+			self.bot.fired_at = gettime();
+		}
+
 		self thread doFiringThread();
 		
 		// remember audible (unsilenced) gunfire for bots' hearing

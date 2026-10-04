@@ -187,6 +187,13 @@ resetBotVars()
 	self.bot.glance_until = 0;
 	self.bot.glance_next = 0;
 	self.bot.glance_pos = undefined;
+	self.bot.glance_wander = ( 0, 0, 0 );
+	self.bot.glance_wander_next = 0;
+	self.bot.glance_aim = undefined;
+	self.bot.look_bad_since = undefined;
+	self.bot.aim_prev_ang = undefined;
+	self.bot.fired_at = -999999; // ms, "never fired" (gettime() is ms in this engine)
+	self.bot.shots = 0;
 	self.bot.spawn_origin = self.origin;
 	self.bot.spawn_time = gettime();
 	self.bot.fight_crouch = false;
@@ -2367,6 +2374,11 @@ aim_loop()
 		{
 			self.bot.look_src = self.bot.glance_src;
 			lookpos = glance;
+			
+			if ( getdvarint( "bots_look_hold" ) )
+			{
+				self.bot.useful_look_until = 0;
+			}
 		}
 		else if ( isdefined( lookat ) )
 		{
@@ -2375,10 +2387,66 @@ aim_loop()
 		}
 		
 		// never stare into a wall: swap for something worth watching
-		if ( !isdefined( lookpos ) || !self botLookIsUseful( lookpos ) )
+		//
+		// bots_look_commit: hysteresis on the swap itself. Every timer change failed to
+		// stop the fidget because the swap was decided fresh on every tick: a glance that
+		// failed one line-of-sight trace was abandoned instantly and the useful sweep took
+		// over, then the glance was re-picked, and so on. Against a real human on the same
+		// server the bots yaw at 230 deg/s against their 95 (p90), 405 against 200 (p99),
+		// snap 13% of samples against 3%, and their pitch moves 6x more (30 vs 5 deg/s) --
+		// which is exactly what "spaz out when looking around" is. Require the failure to
+		// persist for this long before abandoning a look target.
+		bad = !isdefined( lookpos ) || !self botLookIsUseful( lookpos );
+		
+		if ( bad )
 		{
-			lookpos = self botUsefulLook( moving );
-			self.bot.look_src = "useful";
+			if ( !isdefined( self.bot.look_bad_since ) )
+			{
+				self.bot.look_bad_since = gettime();
+			}
+			
+			if ( gettime() - self.bot.look_bad_since < getdvarfloat( "bots_look_commit" ) * 1000 )
+			{
+				bad = false;
+			}
+		}
+		else
+		{
+			self.bot.look_bad_since = undefined;
+		}
+		
+		if ( bad )
+		{
+			// bots_steady_look: a glance that fails the line-of-sight check is usually a
+			// learned human look point seen from a slightly different spot, not a bot
+			// staring at a wall. Swapping straight to the "useful" sweep is what makes
+			// them fidget: telemetry showed 67% of all look-source changes are
+			// useful <-> gaze, a switch every 0.7s at 45-60 deg/s. Humans walking
+			// mostly look where they are going (the "path" state moves the view 15
+			// deg/s against 60 for a gaze sweep), so prefer that before sweeping.
+			if ( getdvarint( "bots_steady_look" ) && isdefined( lookat ) )
+			{
+				lookpos = self botPathLookPoint( lookat );
+				self.bot.look_src = "path";
+			}
+			
+			if ( !isdefined( lookpos ) || !self botLookIsUseful( lookpos ) )
+			{
+				lookpos = self botUsefulLook( moving );
+				self.bot.look_src = "useful";
+				
+				// bots_look_hold: the gaze hold and the useful hold were independent
+				// timers of similar length (1.2-3.5s and 1.5-3.5s), so whichever
+				// expired first handed the view back and the bot ping-ponged between
+				// them: telemetry measured 67% of all look-source changes as
+				// useful <-> gaze, one switch every 0.7s at 45-60 deg/s. Share one
+				// timer instead, so a look is held until it actually expires.
+				if ( getdvarint( "bots_look_hold" ) && isdefined( self.bot.useful_look_until ) )
+				{
+					self.bot.glance_next = self.bot.useful_look_until;
+					self.bot.glance_until = self.bot.useful_look_until;
+				}
+			}
 		}
 		else
 		{
@@ -2522,9 +2590,13 @@ botGazeLook()
 	self.bot.glance_pos = self getEyePos() + anglestoforward( ( pitch, yaw, 0 ) ) * 1000;
 	self.bot.glance_src = "gaze";
 	
+	// Tunable instead of fixed: the shipped 1200-3500ms was measured against
+	// a shorter 800-2400ms (mean ~1.6s, matching the human flick rate) with
+	// three pooled unattended matches per arm, and it came out WORSE -- 20
+	// tells vs 11 and detector AUC 0.99 vs 0.93. Defaults are unchanged.
 	if ( ctx == "s" )
 	{
-		self.bot.glance_until = now + randomintrange( 1200, 3500 );
+		self.bot.glance_until = now + randomintrange( getdvarint( "bots_glance_dwell_lo" ), getdvarint( "bots_glance_dwell_hi" ) );
 	}
 	else
 	{
@@ -3794,7 +3866,28 @@ getIdleGlance()
 	
 	if ( now < self.bot.glance_until && isdefined( self.bot.glance_pos ) )
 	{
-		return self.bot.glance_pos;
+		// Off by default: measured worse (13 tells vs 11, and it did not fix the
+		// jitter it was aimed at once three matches per arm were pooled). Kept
+		// because it is cheap to re-test, not because it is an improvement.
+		// The offset is derived from the base point every call, never accumulated.
+		if ( getdvarint( "bots_glance_wander" ) )
+		{
+			if ( now >= self.bot.glance_wander_next )
+			{
+				self.bot.glance_wander_next = now + randomintrange( 180, 420 );
+				w = self.bot.glance_wander;
+				w = w + ( randomfloatrange( -4, 4 ), randomfloatrange( -4, 4 ), 0 );
+				w = ( clamp( w[ 0 ], -14, 14 ), clamp( w[ 1 ], -14, 14 ), 0 );
+				self.bot.glance_wander = w;
+			}
+			
+			// derive, never accumulate: getIdleGlance() runs many times per hold, and
+			// adding the offset onto the stored point turned this into a fast random
+			// walk of tens of degrees instead of a slow bounded drift
+			self.bot.glance_aim = self.bot.glance_pos + self.bot.glance_wander;
+			
+			return self.bot.glance_aim;
+		}
 	}
 	
 	// maps with demo data: look where real players looked from this spot
@@ -5014,6 +5107,11 @@ use( time )
 */
 fire( what )
 {
+	if ( isdefined( self.bot ) )
+	{
+		self.bot.fired_at = gettime();
+		self.bot.shots++;
+	}
 	self notify( "bot_fire" );
 	
 	if ( what )
@@ -5033,6 +5131,12 @@ pressFire( time )
 {
 	self endon( "death" );
 	self endon( "disconnect" );
+	
+	if ( isdefined( self.bot ) )
+	{
+		self.bot.fired_at = gettime();
+		self.bot.shots++;
+	}
 	self notify( "bot_fire" );
 	self endon( "bot_fire" );
 	
@@ -5318,7 +5422,7 @@ aimControllerStep( goal, dist, aimTime, gain, casual )
 		
 		if ( !casual )
 		{
-			ticks = int( ticks * 1.8 + 0.5 );
+			ticks = int( ticks * getdvarfloat( "bots_acq_slow" ) + 0.5 );
 		}
 		
 		self aimStartFlick( ticks, k, aimGauss( 0.03 * se ) );
@@ -5355,6 +5459,30 @@ aimControllerStep( goal, dist, aimTime, gain, casual )
 		dy = angleclamp180( goal[ 1 ] - start[ 1 ] );
 		ang = ( angleclamp180( start[ 0 ] + ( dx * ( 1 + k ) - dy * perp ) * s ), angleclamp180( start[ 1 ] + ( dy * ( 1 + k ) + dx * perp ) * s ), 0 );
 		
+		
+		// Peak-rate cap: telemetry over three pooled unattended matches says our
+		// fastest view changes are ~20% quicker than any human sample (yaw rate p99
+		// 540 vs 410 deg/s, p90 of >200 deg/s snaps 570 vs 450). This limits how far
+		// the view may move in one 0.05s tick, which bites only the extreme tail --
+		// unlike slowing the whole turn, it leaves normal turns at full speed.
+		// bots_max_turn_rate in deg/s, 0 = off.
+		maxrate = getdvarfloat( "bots_max_turn_rate" );
+		
+		if ( maxrate > 0 && isdefined( self.bot.aim_prev_ang ) )
+		{
+			stepmax = maxrate * 0.05;
+			sx = angleclamp180( ang[ 0 ] - self.bot.aim_prev_ang[ 0 ] );
+			sy = angleclamp180( ang[ 1 ] - self.bot.aim_prev_ang[ 1 ] );
+			step = sqrt( sx * sx + sy * sy );
+			
+			if ( step > stepmax )
+			{
+				f = stepmax / step;
+				ang = ( angleclamp180( self.bot.aim_prev_ang[ 0 ] + sx * f ), angleclamp180( self.bot.aim_prev_ang[ 1 ] + sy * f ), 0 );
+			}
+		}
+		
+		self.bot.aim_prev_ang = ang;
 		if ( self.bot.aim_fl_t >= self.bot.aim_fl_n )
 		{
 			self.bot.aim_mode = "track";
@@ -5487,6 +5615,11 @@ aimFlickTicks( amp, w, aimTime, casual )
 	// idle turns used to be 2.2x slower: flat, slow sweeps (demos: bot flick
 	// peak/mean speed 1.52 vs human 1.75, turn p99 340 vs 540 deg/s)
 	t = ( 0.04 + aimTime * 0.25 ) + ( 0.03 + aimTime * 0.06 ) * aimLog2( 1.0 + amp / w );
+	
+	// acquisition flicks get the 1.8x slowdown at the call site, idle ones do not,
+	// so a casual turn can still cross the view at raw speed. bots_idle_turn_slow
+	// makes that tunable without a rebuild (1.0 = as-is).
+	t *= getdvarfloat( "bots_idle_turn_slow" );
 	ticks = int( t / 0.05 + 0.5 );
 	
 	if ( ticks < 2 )
@@ -5523,6 +5656,8 @@ aimTrackGain( aimTime, casual )
 	{
 		g *= 0.45;
 	}
+	
+	g *= getdvarfloat( "bots_pursuit_gain" );
 	
 	return g;
 }

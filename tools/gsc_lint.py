@@ -21,7 +21,9 @@ import sys
 
 ROOTS = ["maps", "scripts"]
 # engine builtins used by the mod that the HEAD baseline never called
-EXTRA_BUILTINS = {"takeweapon", "botweapon"}
+# print: CoD4/IW3 console builtin (server console + rcon clients). Used by
+# telemetryWatch because CoD4X throttles games_mp.log to ~5 lines a minute.
+EXTRA_BUILTINS = {"takeweapon", "botweapon", "print"}
 
 KEYWORDS = {
     "if", "while", "for", "foreach", "switch", "return", "wait", "thread",
