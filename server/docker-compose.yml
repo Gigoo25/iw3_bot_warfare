@@ -29,17 +29,43 @@ services:
     build: .
     image: iw3-bot-warfare-cod4x
     container_name: iw3-bot-warfare-cod4x
-    restart: unless-stopped   # e.g. host sleep trips the script loop detector (fatal with developer 1)
+    restart: unless-stopped
+    # The CoD4X game loop has wedged after long uptimes (the container stays up,
+    # rcon stops answering) twice now, which silently killed a measurement run.
+    # This asks the server itself over rcon rather than just "is the container up".
+    healthcheck:
+      test: ["CMD-SHELL", "bash /opt/cod4x/rcon_check.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s   # e.g. host sleep trips the script loop detector (fatal with developer 1)
     network_mode: host   # UDP 28960, so a LAN client can join
     stdin_open: true
     tty: true
     volumes:
       - cod4-game:/cod4                             # basepath: main/, zone/ from Steam
       - cod4x-home:/cod4home                        # homepath: logs, CoD4x files, scriptdata writes
+      - ./rcon_check.sh:/opt/cod4x/rcon_check.sh:ro # healthcheck: server answers rcon
+      # CoD4X writes its OWN /cod4/main/server.cfg, and `+exec server.cfg` reads
+      # that one -- it is where the rcon password comes from. It silently rotates
+      # when CoD4X auto-updates, which looks exactly like a dead server: rcon stops
+      # answering, the mod's dvars reset, telemetry goes quiet, and the healthcheck
+      # correctly reports unhealthy. Mount the project's config over it so the
+      # password, gametype, bot fill and telemetry channel are deterministic.
+      - ./server.cfg:/cod4/main/server.cfg:ro
       - ../output:/cod4/mods/mp_bots:ro             # built mod
+      - ../output/demos/server:/cod4/mods/mp_bots/demos   # sv_autodemorecord writes here
       - ../scriptdata:/cod4home/mods/mp_bots/scriptdata:ro   # waypoints: fs_fopen only reads loose files, not the iwd
       - ../scriptdata/navmesh:/cod4home/mods/mp_bots/scriptdata/navmesh   # generated navmeshes (written by the server)
       - ./server.cfg:/cod4/main/server.cfg:ro
+    # Notes: no `+map` here -- loading a map during init wedged this CoD4X build
+    # three times in a row; the map is set over rcon after boot instead (that is
+    # what tools/botmatch.sh and tools/watch_human.sh do). Comments must stay OUT
+    # of this folded block: inside it they become literal console command lines and
+    # compose rejects the whole command.
+    # g_gametype is only applied at startup ("will be changed upon restarting"), so the
+    # mode has to be passed here, not set over rcon mid-session. tools/botmatch.sh
+    # verifies map and gametype before the match and refuses to score otherwise.
     command: >
       +set dedicated 1
       +set net_port 28960
@@ -52,6 +78,7 @@ services:
       +set g_logsync 2
       +set sv_punkbuster 0
       +exec server.cfg
+      +set sv_maprotation "gametype ${BOT_GAMETYPE:-sd} map ${BOT_MAP:-mp_backlot}"
       +map_rotate
 
 volumes:
